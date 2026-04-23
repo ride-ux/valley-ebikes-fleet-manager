@@ -17,10 +17,10 @@ const TABLES = {
 // Supabase uses snake_case; our app uses camelCase. These translate both ways.
 const fromDb = {
   bikes: (r) => ({
-    id: r.id, name: r.name, category: r.category, brand: r.brand, model: r.model,
+    id: r.id, bikeNumber: r.bike_number, name: r.name, category: r.category, brand: r.brand, model: r.model,
     serial: r.serial, purchaseDate: r.purchase_date, status: r.status,
     conditionScore: r.condition_score, totalKm: r.total_km, totalRides: r.total_rides,
-    batteryId: r.battery_id, lastPreRide: r.last_pre_ride, lastPostRide: r.last_post_ride,
+    odometer: r.odometer, batteryId: r.battery_id, lastPreRide: r.last_pre_ride, lastPostRide: r.last_post_ride,
     lastService: r.last_service, notes: r.notes, created: r.created_at,
   }),
   batteries: (r) => ({
@@ -53,9 +53,10 @@ const fromDb = {
 
 const toDb = {
   bikes: (o) => ({
-    name: o.name, category: o.category, brand: o.brand, model: o.model, serial: o.serial,
+    bike_number: o.bikeNumber, name: o.name, category: o.category, brand: o.brand, model: o.model, serial: o.serial,
     purchase_date: o.purchaseDate || null, status: o.status, condition_score: o.conditionScore,
-    total_km: o.totalKm, total_rides: o.totalRides, battery_id: o.batteryId || null,
+    total_km: o.totalKm, total_rides: o.totalRides, odometer: o.odometer,
+    battery_id: o.batteryId || null,
     last_pre_ride: o.lastPreRide || null, last_post_ride: o.lastPostRide || null,
     last_service: o.lastService || null, notes: o.notes,
   }),
@@ -299,8 +300,74 @@ const StatusBadge = ({ status }) => (
   <span style={s.badge(STATUS_COLORS[status] || C.textMuted)}>{status}</span>
 );
 
+// ─── PIN GATE ───
+const APP_PIN = "2025"; // Change this to your preferred PIN
+
+function PinScreen({ onUnlock }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState(false);
+  const [shake, setShake] = useState(false);
+
+  const handleSubmit = () => {
+    if (pin === APP_PIN) {
+      sessionStorage.setItem("fleet-unlocked", "true");
+      onUnlock();
+    } else {
+      setError(true);
+      setShake(true);
+      setPin("");
+      setTimeout(() => setShake(false), 500);
+    }
+  };
+
+  return (
+    <div style={{
+      ...base, background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", flexDirection: "column", padding: 20,
+    }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <div style={{ fontSize: 40, marginBottom: 8 }}>⚡</div>
+        <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Fleet Manager</div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Valley E-Bikes</div>
+      </div>
+      <div style={{
+        ...s.card, maxWidth: 320, width: "100%", textAlign: "center",
+        animation: shake ? "shake 0.4s ease" : "none",
+      }}>
+        <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }`}</style>
+        <div style={{ ...s.label, marginBottom: 12, textAlign: "center" }}>Enter PIN to continue</div>
+        <input
+          style={{ ...s.input, textAlign: "center", fontSize: 24, fontFamily: MONO, letterSpacing: 12 }}
+          type="password"
+          maxLength={8}
+          value={pin}
+          onChange={(e) => { setPin(e.target.value); setError(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+          placeholder="••••"
+          autoFocus
+        />
+        {error && <div style={{ color: C.red, fontSize: 12, marginTop: 8 }}>Wrong PIN. Try again.</div>}
+        <button style={{ ...s.btn("primary"), width: "100%", justifyContent: "center", marginTop: 16 }} onClick={handleSubmit}>
+          Unlock
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ───
 export default function FleetManager() {
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("fleet-unlocked") === "true");
+
+  if (!unlocked) {
+    return <PinScreen onUnlock={() => setUnlocked(true)} />;
+  }
+
+  return <FleetManagerApp />;
+}
+
+function FleetManagerApp() {
   const [state, setState] = useState({ bikes: [], batteries: [], checks: [], faults: [], services: [], parts: [], staff: [] });
   const [loading, setLoading] = useState(true);
   const [syncError, setSyncError] = useState(null);
@@ -702,12 +769,15 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
         <div style={{ ...s.card, marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
+              <div style={{ fontFamily: MONO, fontSize: 13, color: C.accent, fontWeight: 700, marginBottom: 2 }}>Bike #{bike.bikeNumber || "—"}</div>
               <h1 style={{ ...s.h1, marginBottom: 4 }}>{bike.name || bike.id}</h1>
               <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>{bike.category} • {bike.brand} {bike.model}</div>
             </div>
             <StatusBadge status={bike.status} />
           </div>
           <div style={{ ...s.grid(2), marginTop: 12 }}>
+            <div><span style={s.label}>Bike Number</span><div style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, color: C.accent }}>{bike.bikeNumber || "—"}</div></div>
+            <div><span style={s.label}>Odometer</span><div style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO }}>{bike.odometer ? `${bike.odometer.toLocaleString()} km` : "—"}</div></div>
             <div><span style={s.label}>Serial</span><div style={{ fontSize: 13 }}>{bike.serial || "—"}</div></div>
             <div><span style={s.label}>Purchased</span><div style={{ fontSize: 13 }}>{fmtDate(bike.purchaseDate)}</div></div>
             <div><span style={s.label}>Total Rides</span><div style={{ fontSize: 13 }}>{bike.totalRides || 0}</div></div>
@@ -782,7 +852,7 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
           <table style={s.table}>
             <thead>
               <tr>
-                {["ID", "Name", "Category", "Status", "Last Check", "Faults"].map((h) => <th key={h} style={s.th}>{h}</th>)}
+                {["Bike #", "Name", "Category", "Odometer", "Status", "Last Check", "Faults"].map((h) => <th key={h} style={s.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -790,9 +860,10 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
                 <tr key={b.id} style={{ cursor: "pointer" }} onClick={() => setSelectedBike(b.id)}
                   onMouseOver={(e) => e.currentTarget.style.background = C.surfaceHover}
                   onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
-                  <td style={{ ...s.td, fontFamily: MONO, fontSize: 12, color: C.textMuted }}>{b.id}</td>
+                  <td style={{ ...s.td, fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.accent }}>{b.bikeNumber || "—"}</td>
                   <td style={{ ...s.td, fontWeight: 600 }}>{b.name || "—"}</td>
                   <td style={{ ...s.td, color: C.textMuted }}>{b.category || "—"}</td>
+                  <td style={{ ...s.td, fontFamily: MONO, fontSize: 13 }}>{b.odometer ? `${b.odometer.toLocaleString()} km` : "—"}</td>
                   <td style={s.td}><StatusBadge status={b.status} /></td>
                   <td style={{ ...s.td, fontSize: 12, color: C.textMuted }}>{fmtDateTime(b.lastPreRide || b.lastPostRide)}</td>
                   <td style={s.td}>
@@ -1370,6 +1441,7 @@ function ModalShell({ title, children, onClose }) {
 function AddBikeModal({ onSubmit, onClose, batteries, existing }) {
   const isEdit = !!existing;
   const [f, setF] = useState(existing ? {
+    bikeNumber: existing.bikeNumber || "",
     name: existing.name || "",
     category: existing.category || "",
     brand: existing.brand || "",
@@ -1382,11 +1454,15 @@ function AddBikeModal({ onSubmit, onClose, batteries, existing }) {
     conditionScore: existing.conditionScore ?? 10,
     totalKm: existing.totalKm || 0,
     totalRides: existing.totalRides || 0,
-  } : { name: "", category: "", brand: "", model: "", serial: "", purchaseDate: "", batteryId: "", notes: "" });
+    odometer: existing.odometer || 0,
+  } : { bikeNumber: "", name: "", category: "", brand: "", model: "", serial: "", purchaseDate: "", batteryId: "", notes: "", odometer: 0 });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   return (
     <ModalShell title={isEdit ? "Edit Bike" : "Add Bike"} onClose={onClose}>
-      <Field label="Bike Name"><input style={s.input} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Cruiser #7" /></Field>
+      <div style={s.grid(2)}>
+        <Field label="Bike Number"><input style={s.input} value={f.bikeNumber} onChange={(e) => set("bikeNumber", e.target.value)} placeholder="e.g. 01, 02, VK-01" /></Field>
+        <Field label="Bike Name"><input style={s.input} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Cruiser #7" /></Field>
+      </div>
       <Field label="Category"><Select value={f.category} onChange={(v) => set("category", v)} options={BIKE_CATEGORIES} placeholder="Select..." /></Field>
       <div style={s.grid(2)}>
         <Field label="Brand"><input style={s.input} value={f.brand} onChange={(e) => set("brand", e.target.value)} /></Field>
@@ -1399,6 +1475,7 @@ function AddBikeModal({ onSubmit, onClose, batteries, existing }) {
       <Field label="Linked Battery">
         <Select value={f.batteryId} onChange={(v) => set("batteryId", v)} options={batteries.map((b) => [b.id, b.serial || b.id])} placeholder="None" />
       </Field>
+      <Field label="Odometer (km)"><input style={s.input} type="number" min="0" value={f.odometer} onChange={(e) => set("odometer", parseInt(e.target.value) || 0)} /></Field>
       {isEdit && (
         <>
           <Field label="Status"><Select value={f.status} onChange={(v) => set("status", v)} options={BIKE_STATUSES} /></Field>
