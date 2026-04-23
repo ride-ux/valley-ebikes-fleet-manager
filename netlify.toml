@@ -1,4 +1,4 @@
-[[build]
+[build]
   command = "rm -rf node_modules && npm install && npx vite build"
   publish = "dist"
 
