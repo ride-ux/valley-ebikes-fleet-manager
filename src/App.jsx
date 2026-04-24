@@ -105,7 +105,15 @@ const fmtDateTime = (iso) => {
 // ─── CONSTANTS ───
 const BIKE_STATUSES = ["Ready", "Needs Check", "Monitor", "Service Due", "Out of Service"];
 const BIKE_CATEGORIES = ["Fat Tyre Cruiser", "Vallkree Warchild", "Vallkree Moondog", "Higgs Teen", "NCM Milano", "Cargo Bike", "Kids", "Trike"];
-const CHECK_ITEMS_PRE = ["tyres", "brakes", "wheels", "cockpit", "seat", "battery", "power", "chain", "damage", "keys"];
+const CHECK_ITEMS_PRE = ["tyres", "brakes", "tyrePressure", "screen", "seat", "batteryFullCharge", "boxCleanPosition", "chainLubed", "damage", "keys", "lockInBike", "helmetClean", "bikeClean"];
+const CHECK_LABELS = {
+  tyres: "Tyres OK", brakes: "Brakes OK", tyrePressure: "Tyre Pressure", screen: "Screen",
+  seat: "Seat Secure", batteryFullCharge: "Battery Full Charge", boxCleanPosition: "Box Clean & In Position",
+  chainLubed: "Chain Lubed", damage: "Damage Visible", keys: "Keys Present",
+  lockInBike: "Lock In Bike", helmetClean: "Helmet Clean", bikeClean: "Bike Clean",
+  brakePerf: "Brake Performance", gearPerf: "Gear Performance", tyreIssues: "Tyre Issues",
+  batteryLevel: "Battery Level", customerIssue: "Customer Reported Issue", cleanDone: "Clean Completed",
+};
 const CHECK_ITEMS_POST = ["damage", "brakePerf", "gearPerf", "tyreIssues", "batteryLevel", "customerIssue", "cleanDone"];
 const PRE_RESULTS = ["Passed", "Passed with Monitor Note", "Failed"];
 const POST_RESULTS = ["Ready", "Monitor", "Needs Service", "Out of Service"];
@@ -517,10 +525,13 @@ function FleetManagerApp() {
     const checkRecord = { ...data, id: uid("CHK"), date: now() };
     update("checks", (prev) => [...prev, checkRecord]);
 
+    // Build bike update patch
+    const odometerPatch = data.odometer ? { odometer: data.odometer } : {};
+
     // Auto-status logic
     if (data.type === "pre-ride") {
       if (data.result === "Failed") {
-        update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service", lastPreRide: now() } : b));
+        update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service", lastPreRide: now(), ...odometerPatch } : b));
         // Auto-create fault
         update("faults", (prev) => [...prev, {
           id: uid("FLT"), bikeId: data.bikeId, date: now(), reportedBy: data.staff,
@@ -529,7 +540,7 @@ function FleetManagerApp() {
           assignedTo: "", resolution: "", partsUsed: "", closedDate: "",
         }]);
       } else {
-        update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: data.result === "Passed with Monitor Note" ? "Monitor" : "Ready", lastPreRide: now() } : b));
+        update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: data.result === "Passed with Monitor Note" ? "Monitor" : "Ready", lastPreRide: now(), ...odometerPatch } : b));
       }
     } else {
       const statusMap = { Ready: "Ready", Monitor: "Monitor", "Needs Service": "Service Due", "Out of Service": "Out of Service" };
@@ -1515,18 +1526,32 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
   const [toggles, setToggles] = useState(Object.fromEntries(items.map((i) => [i, true])));
   const [result, setResult] = useState(results[0]);
   const [notes, setNotes] = useState("");
+  const [odometer, setOdometer] = useState("");
+
+  // Auto-fill odometer from selected bike
+  const selectedBike = bikes.find((b) => b.id === bikeId);
+  useEffect(() => {
+    if (selectedBike && isPre) {
+      setOdometer(selectedBike.odometer || "");
+    }
+  }, [bikeId]);
 
   return (
     <ModalShell title={isPre ? "Pre-Ride Check" : "Post-Ride Check"} onClose={onClose}>
       <Field label="Bike">
-        <Select value={bikeId} onChange={setBikeId} options={bikes.map((b) => [b.id, b.name || b.id])} placeholder="Select bike..." />
+        <Select value={bikeId} onChange={setBikeId} options={bikes.map((b) => [b.id, `${b.bikeNumber ? "#" + b.bikeNumber + " — " : ""}${b.name || b.id}`])} placeholder="Select bike..." />
       </Field>
       <Field label="Staff">
         <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
       </Field>
+      {isPre && (
+        <Field label="Odometer (km)">
+          <input style={{ ...s.input, fontFamily: MONO, fontSize: 16, fontWeight: 700 }} type="number" min="0" value={odometer} onChange={(e) => setOdometer(parseInt(e.target.value) || 0)} placeholder="Current reading" />
+        </Field>
+      )}
       <div style={{ ...s.card, padding: 14, margin: "12px 0" }}>
         {items.map((item) => (
-          <Toggle key={item} label={item.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())} value={toggles[item]}
+          <Toggle key={item} label={CHECK_LABELS[item] || item.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())} value={toggles[item]}
             onChange={(v) => setToggles((p) => ({ ...p, [item]: v }))} />
         ))}
       </div>
@@ -1536,7 +1561,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
       <Field label="Notes"><textarea style={{ ...s.input, minHeight: 60 }} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       <button style={s.btn(result === "Failed" || result === "Out of Service" ? "danger" : "primary")} onClick={() => {
         if (!bikeId) return alert("Select a bike");
-        onSubmit({ bikeId, staff: staffName, type, toggles, result, notes });
+        onSubmit({ bikeId, staff: staffName, type, toggles, result, notes, odometer: isPre ? odometer : undefined });
       }}>
         <Icon d={Icons.check} size={16} /> Submit {isPre ? "Pre" : "Post"}-Ride
       </button>
