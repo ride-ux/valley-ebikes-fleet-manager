@@ -821,12 +821,49 @@ function useDragReorder(items, key, update) {
 // BIKES PAGE
 // ═══════════════════════════════════════════════
 function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, selectedBike, setSelectedBike, setModal, update, checks }) {
-  const sorted = [...bikes].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  const [sortCol, setSortCol] = useState(null); // null = drag order, or column key
+  const [sortDir, setSortDir] = useState("asc");
+
+  const toggleSort = (col) => {
+    if (sortCol === col) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortCol(null); setSortDir("asc"); } // third click resets to drag order
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  };
+
+  const faultCount = (bikeId) => faults.filter((f) => f.bikeId === bikeId && (f.status === "Open" || f.status === "In Progress")).length;
+
+  const sorted = [...bikes].sort((a, b) => {
+    if (!sortCol) return (a.sortOrder ?? 999) - (b.sortOrder ?? 999);
+    let va, vb;
+    switch (sortCol) {
+      case "bikeNumber": va = a.bikeNumber || ""; vb = b.bikeNumber || ""; break;
+      case "name": va = (a.name || "").toLowerCase(); vb = (b.name || "").toLowerCase(); break;
+      case "category": va = (a.category || "").toLowerCase(); vb = (b.category || "").toLowerCase(); break;
+      case "odometer": va = a.odometer || 0; vb = b.odometer || 0; break;
+      case "status": va = a.status || ""; vb = b.status || ""; break;
+      case "lastCheck": va = a.lastPreRide || a.lastPostRide || ""; vb = b.lastPreRide || b.lastPostRide || ""; break;
+      case "faults": va = faultCount(a.id); vb = faultCount(b.id); break;
+      default: return 0;
+    }
+    if (typeof va === "number") return sortDir === "asc" ? va - vb : vb - va;
+    return sortDir === "asc" ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
   const filtered = sorted.filter((b) => {
     const term = searchTerm.toLowerCase();
     return !term || b.name?.toLowerCase().includes(term) || b.id.toLowerCase().includes(term) || b.category?.toLowerCase().includes(term) || b.bikeNumber?.toLowerCase().includes(term);
   });
   const { dragIdx, overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(filtered, "bikes", update);
+
+  const SortHeader = ({ col, label }) => (
+    <th style={{ ...s.th, cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort(col)}>
+      {label} {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+  );
 
   const bike = selectedBike ? bikes.find((b) => b.id === selectedBike) : null;
 
@@ -925,7 +962,14 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
           <table style={s.table}>
             <thead>
               <tr>
-                {["", "Bike #", "Name", "Category", "Odometer", "Status", "Last Check", "Faults"].map((h) => <th key={h} style={s.th}>{h}</th>)}
+                <th style={s.th}></th>
+                <SortHeader col="bikeNumber" label="Bike #" />
+                <SortHeader col="name" label="Name" />
+                <SortHeader col="category" label="Category" />
+                <SortHeader col="odometer" label="Odometer" />
+                <SortHeader col="status" label="Status" />
+                <SortHeader col="lastCheck" label="Last Check" />
+                <SortHeader col="faults" label="Faults" />
               </tr>
             </thead>
             <tbody>
@@ -946,9 +990,9 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
                   <td style={s.td}><StatusBadge status={b.status} /></td>
                   <td style={{ ...s.td, fontSize: 12, color: C.textMuted }}>{fmtDateTime(b.lastPreRide || b.lastPostRide)}</td>
                   <td style={s.td}>
-                    {faults.filter((f) => f.bikeId === b.id && (f.status === "Open" || f.status === "In Progress")).length > 0 && (
+                    {faultCount(b.id) > 0 && (
                       <span style={s.badge(C.red)}>
-                        {faults.filter((f) => f.bikeId === b.id && (f.status === "Open" || f.status === "In Progress")).length}
+                        {faultCount(b.id)}
                       </span>
                     )}
                   </td>
