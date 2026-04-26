@@ -539,6 +539,8 @@ function FleetManagerApp() {
           description: "Auto-created from failed pre-ride check", status: "Open",
           assignedTo: "", resolution: "", partsUsed: "", closedDate: "",
         }]);
+        // Auto-create service job
+        autoCreateService(data.bikeId, "Failed pre-ride check — requires inspection and repair");
       } else {
         update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: data.result === "Passed with Monitor Note" ? "Monitor" : "Ready", lastPreRide: now(), ...odometerPatch } : b));
       }
@@ -549,13 +551,35 @@ function FleetManagerApp() {
     setModal(null);
   };
 
+  // ─── AUTO-CREATE SERVICE JOB ───
+  const autoCreateService = (bikeId, reason) => {
+    const bike = bikes.find((b) => b.id === bikeId);
+    const today = new Date().toISOString().slice(0, 10);
+    update("services", (prev) => [...prev, {
+      id: uid("SVC"),
+      bikeId,
+      serviceType: "Repair Job",
+      dueDate: today,
+      completedDate: null,
+      assignedTo: "",
+      tasks: reason,
+      workNotes: "",
+      partsUsed: [],
+      timeSpent: "",
+      outcome: "",
+      created: now(),
+    }]);
+  };
+
   // ─── SUBMIT FAULT ───
   const submitFault = (data) => {
     update("faults", (prev) => [...prev, { ...data, id: uid("FLT"), date: now(), status: "Open", closedDate: "" }]);
     if (data.severity === "Critical") {
       update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
+      autoCreateService(data.bikeId, `Critical fault: ${data.category} ${data.code} — ${data.description}`);
     } else if (data.severity === "Service Required") {
       update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
+      autoCreateService(data.bikeId, `Fault: ${data.category} ${data.code} — ${data.description}`);
     }
     setModal(null);
   };
@@ -618,7 +642,7 @@ function FleetManagerApp() {
       {page === "dashboard" && <DashboardPage stats={stats} bikes={bikes} faults={faults} parts={parts} setPage={setPage} setSelectedBike={setSelectedBike} />}
       {page === "bikes" && <BikesPage bikes={bikes} faults={faults} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
       {page === "checks" && <ChecksPage checks={checks} bikes={bikes} setModal={setModal} />}
-      {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} />}
+      {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} autoCreateService={autoCreateService} />}
       {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
       {page === "batteries" && <BatteriesPage batteries={batteries} bikes={bikes} setModal={setModal} update={update} />}
       {page === "parts" && <PartsPage parts={parts} update={update} />}
@@ -978,7 +1002,7 @@ function ChecksPage({ checks, bikes, setModal }) {
 // ═══════════════════════════════════════════════
 // FAULTS PAGE
 // ═══════════════════════════════════════════════
-function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update }) {
+function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, autoCreateService }) {
   const [filter, setFilter] = useState("open");
   const [editingFault, setEditingFault] = useState(null);
   const filtered = faults.filter((f) => {
@@ -1039,11 +1063,12 @@ function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update }) {
         staff={staff}
         onSave={(data) => {
           update("faults", (prev) => prev.map((f) => f.id === editingFault ? { ...f, ...data } : f));
-          // Update bike status based on severity
           if (data.severity === "Critical") {
             update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
+            autoCreateService(data.bikeId, `Critical fault: ${data.category} ${data.code} — ${data.description}`);
           } else if (data.severity === "Service Required") {
             update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
+            autoCreateService(data.bikeId, `Fault: ${data.category} ${data.code} — ${data.description}`);
           }
           setEditingFault(null);
         }}
