@@ -616,7 +616,7 @@ function FleetManagerApp() {
       {page === "dashboard" && <DashboardPage stats={stats} bikes={bikes} faults={faults} parts={parts} setPage={setPage} setSelectedBike={setSelectedBike} />}
       {page === "bikes" && <BikesPage bikes={bikes} faults={faults} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
       {page === "checks" && <ChecksPage checks={checks} bikes={bikes} setModal={setModal} />}
-      {page === "faults" && <FaultsPage faults={faults} bikes={bikes} setModal={setModal} resolveFault={resolveFault} />}
+      {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} />}
       {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
       {page === "batteries" && <BatteriesPage batteries={batteries} bikes={bikes} setModal={setModal} update={update} />}
       {page === "parts" && <PartsPage parts={parts} update={update} />}
@@ -976,8 +976,9 @@ function ChecksPage({ checks, bikes, setModal }) {
 // ═══════════════════════════════════════════════
 // FAULTS PAGE
 // ═══════════════════════════════════════════════
-function FaultsPage({ faults, bikes, setModal, resolveFault }) {
+function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update }) {
   const [filter, setFilter] = useState("open");
+  const [editingFault, setEditingFault] = useState(null);
   const filtered = faults.filter((f) => {
     if (filter === "open") return f.status === "Open" || f.status === "In Progress" || f.status === "Waiting Parts";
     if (filter === "resolved") return f.status === "Resolved" || f.status === "Closed";
@@ -1017,16 +1018,92 @@ function FaultsPage({ faults, bikes, setModal, resolveFault }) {
             </div>
             {f.description && <div style={{ marginTop: 8, fontSize: 13 }}>{f.description}</div>}
             {f.resolution && <div style={{ marginTop: 6, fontSize: 12, color: C.green }}>✓ {f.resolution}</div>}
-            {(f.status === "Open" || f.status === "In Progress") && (
-              <button style={{ ...s.btn("ghost"), marginTop: 8, fontSize: 12 }} onClick={() => {
-                const notes = prompt("Resolution notes:");
-                if (notes) resolveFault(f.id, notes, "");
-              }}>Resolve</button>
-            )}
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => setEditingFault(f.id)}>✎ Edit</button>
+              {(f.status === "Open" || f.status === "In Progress") && (
+                <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => {
+                  const notes = prompt("Resolution notes:");
+                  if (notes) resolveFault(f.id, notes, "");
+                }}>Resolve</button>
+              )}
+            </div>
           </div>
         ))
       )}
+
+      {editingFault && <EditFaultModal
+        fault={faults.find((f) => f.id === editingFault)}
+        bikes={bikes}
+        staff={staff}
+        onSave={(data) => {
+          update("faults", (prev) => prev.map((f) => f.id === editingFault ? { ...f, ...data } : f));
+          setEditingFault(null);
+        }}
+        onDelete={() => {
+          if (confirm("Delete this fault permanently?")) {
+            update("faults", (prev) => prev.filter((f) => f.id !== editingFault));
+            setEditingFault(null);
+          }
+        }}
+        onClose={() => setEditingFault(null)}
+      />}
     </div>
+  );
+}
+
+function EditFaultModal({ fault, bikes, staff, onSave, onDelete, onClose }) {
+  const [f, setF] = useState({
+    bikeId: fault.bikeId || "",
+    reportedBy: fault.reportedBy || "",
+    category: fault.category || "",
+    code: fault.code || "",
+    severity: fault.severity || "Service Required",
+    description: fault.description || "",
+    status: fault.status || "Open",
+    assignedTo: fault.assignedTo || "",
+    resolution: fault.resolution || "",
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const codes = f.category ? (FAULT_CODES[f.category] || []) : [];
+
+  return (
+    <ModalShell title="Edit Fault" onClose={onClose}>
+      <Field label="Bike">
+        <Select value={f.bikeId} onChange={(v) => set("bikeId", v)} options={bikes.map((b) => [b.id, `${b.bikeNumber ? "#" + b.bikeNumber + " — " : ""}${b.name || b.id}`])} placeholder="Select bike..." />
+      </Field>
+      <Field label="Reported By">
+        <input style={s.input} value={f.reportedBy} onChange={(e) => set("reportedBy", e.target.value)} />
+      </Field>
+      <Field label="Category">
+        <Select value={f.category} onChange={(v) => { set("category", v); set("code", ""); }} options={FAULT_CATEGORIES} placeholder="Select..." />
+      </Field>
+      {codes.length > 0 && (
+        <Field label="Fault Code">
+          <Select value={f.code} onChange={(v) => set("code", v)} options={codes} placeholder="Select code..." />
+        </Field>
+      )}
+      <Field label="Severity">
+        <Select value={f.severity} onChange={(v) => set("severity", v)} options={FAULT_SEVERITY} />
+      </Field>
+      <Field label="Status">
+        <Select value={f.status} onChange={(v) => set("status", v)} options={FAULT_STATUS} />
+      </Field>
+      <Field label="Assigned To">
+        <input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} placeholder="Staff name" />
+      </Field>
+      <Field label="Description">
+        <textarea style={{ ...s.input, minHeight: 50 }} value={f.description} onChange={(e) => set("description", e.target.value)} />
+      </Field>
+      <Field label="Resolution Notes">
+        <textarea style={{ ...s.input, minHeight: 50 }} value={f.resolution} onChange={(e) => set("resolution", e.target.value)} />
+      </Field>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button style={s.btn("primary")} onClick={() => onSave(f)}>
+          <Icon d={Icons.save} size={16} /> Save Changes
+        </button>
+        <button style={s.btn("danger")} onClick={onDelete}>Delete</button>
+      </div>
+    </ModalShell>
   );
 }
 
