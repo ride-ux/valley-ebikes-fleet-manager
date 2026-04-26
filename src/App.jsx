@@ -554,6 +554,8 @@ function FleetManagerApp() {
     update("faults", (prev) => [...prev, { ...data, id: uid("FLT"), date: now(), status: "Open", closedDate: "" }]);
     if (data.severity === "Critical") {
       update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
+    } else if (data.severity === "Service Required") {
+      update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
     }
     setModal(null);
   };
@@ -1037,6 +1039,12 @@ function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update }) {
         staff={staff}
         onSave={(data) => {
           update("faults", (prev) => prev.map((f) => f.id === editingFault ? { ...f, ...data } : f));
+          // Update bike status based on severity
+          if (data.severity === "Critical") {
+            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
+          } else if (data.severity === "Service Required") {
+            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
+          }
           setEditingFault(null);
         }}
         onDelete={() => {
