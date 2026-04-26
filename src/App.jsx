@@ -20,7 +20,7 @@ const fromDb = {
     id: r.id, bikeNumber: r.bike_number, name: r.name, category: r.category, brand: r.brand, model: r.model,
     serial: r.serial, purchaseDate: r.purchase_date, status: r.status,
     conditionScore: r.condition_score, totalKm: r.total_km, totalRides: r.total_rides,
-    odometer: r.odometer, batteryId: r.battery_id, lastPreRide: r.last_pre_ride, lastPostRide: r.last_post_ride,
+    odometer: r.odometer, sortOrder: r.sort_order ?? 999, batteryId: r.battery_id, lastPreRide: r.last_pre_ride, lastPostRide: r.last_post_ride,
     lastService: r.last_service, notes: r.notes, created: r.created_at,
   }),
   batteries: (r) => ({
@@ -46,7 +46,7 @@ const fromDb = {
   parts: (r) => ({
     id: r.id, name: r.name, category: r.category, supplier: r.supplier,
     supplierCode: r.supplier_code, qty: r.qty, reorder: r.reorder, cost: r.cost,
-    compatible: r.compatible, notes: r.notes, created: r.created_at,
+    compatible: r.compatible, notes: r.notes, sortOrder: r.sort_order ?? 999, created: r.created_at,
   }),
   staff: (r) => ({ id: r.id, name: r.name, role: r.role, phone: r.phone, active: r.active }),
 };
@@ -55,7 +55,7 @@ const toDb = {
   bikes: (o) => ({
     bike_number: o.bikeNumber, name: o.name, category: o.category, brand: o.brand, model: o.model, serial: o.serial,
     purchase_date: o.purchaseDate || null, status: o.status, condition_score: o.conditionScore,
-    total_km: o.totalKm, total_rides: o.totalRides, odometer: o.odometer,
+    total_km: o.totalKm, total_rides: o.totalRides, odometer: o.odometer, sort_order: o.sortOrder,
     battery_id: o.batteryId || null,
     last_pre_ride: o.lastPreRide || null, last_post_ride: o.lastPostRide || null,
     last_service: o.lastService || null, notes: o.notes,
@@ -82,7 +82,7 @@ const toDb = {
   }),
   parts: (o) => ({
     name: o.name, category: o.category, supplier: o.supplier, supplier_code: o.supplierCode,
-    qty: o.qty, reorder: o.reorder, cost: o.cost, compatible: o.compatible, notes: o.notes,
+    qty: o.qty, reorder: o.reorder, cost: o.cost, compatible: o.compatible, notes: o.notes, sort_order: o.sortOrder,
   }),
   staff: (o) => ({ name: o.name, role: o.role, phone: o.phone, active: o.active }),
 };
@@ -757,14 +757,50 @@ function DashboardPage({ stats, bikes, faults, parts, setPage, setSelectedBike }
   );
 }
 
+// ─── DRAG AND DROP REORDER ───
+const DragHandle = () => (
+  <span style={{ cursor: "grab", color: C.textMuted, fontSize: 16, lineHeight: 1, userSelect: "none", padding: "0 4px" }} title="Drag to reorder">⠿</span>
+);
+
+function useDragReorder(items, key, update) {
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+
+  const onDragStart = (idx) => (e) => {
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const onDragOver = (idx) => (e) => {
+    e.preventDefault();
+    setOverIdx(idx);
+  };
+  const onDrop = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    const reordered = [...items];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(idx, 0, moved);
+    // Assign sort_order to each item
+    const updated = reordered.map((item, i) => ({ ...item, sortOrder: i }));
+    update(key, () => updated);
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+  const onDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  return { dragIdx, overIdx, onDragStart, onDragOver, onDrop, onDragEnd };
+}
+
 // ═══════════════════════════════════════════════
 // BIKES PAGE
 // ═══════════════════════════════════════════════
 function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, selectedBike, setSelectedBike, setModal, update, checks }) {
-  const filtered = bikes.filter((b) => {
+  const sorted = [...bikes].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  const filtered = sorted.filter((b) => {
     const term = searchTerm.toLowerCase();
-    return !term || b.name?.toLowerCase().includes(term) || b.id.toLowerCase().includes(term) || b.category?.toLowerCase().includes(term);
+    return !term || b.name?.toLowerCase().includes(term) || b.id.toLowerCase().includes(term) || b.category?.toLowerCase().includes(term) || b.bikeNumber?.toLowerCase().includes(term);
   });
+  const { dragIdx, overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(filtered, "bikes", update);
 
   const bike = selectedBike ? bikes.find((b) => b.id === selectedBike) : null;
 
@@ -863,14 +899,20 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
           <table style={s.table}>
             <thead>
               <tr>
-                {["Bike #", "Name", "Category", "Odometer", "Status", "Last Check", "Faults"].map((h) => <th key={h} style={s.th}>{h}</th>)}
+                {["", "Bike #", "Name", "Category", "Odometer", "Status", "Last Check", "Faults"].map((h) => <th key={h} style={s.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((b) => (
-                <tr key={b.id} style={{ cursor: "pointer" }} onClick={() => setSelectedBike(b.id)}
-                  onMouseOver={(e) => e.currentTarget.style.background = C.surfaceHover}
-                  onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+              {filtered.map((b, idx) => (
+                <tr key={b.id}
+                  draggable
+                  onDragStart={onDragStart(idx)}
+                  onDragOver={onDragOver(idx)}
+                  onDrop={onDrop(idx)}
+                  onDragEnd={onDragEnd}
+                  style={{ cursor: "pointer", background: overIdx === idx ? C.accentGlow : "transparent", opacity: dragIdx === idx ? 0.4 : 1 }}
+                  onClick={() => setSelectedBike(b.id)}>
+                  <td style={{ ...s.td, width: 30 }}><DragHandle /></td>
                   <td style={{ ...s.td, fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.accent }}>{b.bikeNumber || "—"}</td>
                   <td style={{ ...s.td, fontWeight: 600 }}>{b.name || "—"}</td>
                   <td style={{ ...s.td, color: C.textMuted }}>{b.category || "—"}</td>
@@ -960,9 +1002,12 @@ function FaultsPage({ faults, bikes, setModal, resolveFault }) {
           <div key={f.id} style={s.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+                  {(() => { const bike = bikes.find((b) => b.id === f.bikeId); return bike ? `#${bike.bikeNumber || "?"} — ${bike.name || "Unnamed"}` : f.bikeId; })()}
+                </div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{f.code} — {f.category}</div>
                 <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {bikes.find((b) => b.id === f.bikeId)?.name || f.bikeId} • {fmtDateTime(f.date)} • {f.reportedBy}
+                  {fmtDateTime(f.date)} • {f.reportedBy}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1324,13 +1369,15 @@ function BatteriesPage({ batteries, bikes, setModal, update }) {
 // PARTS PAGE
 // ═══════════════════════════════════════════════
 function PartsPage({ parts, update }) {
-  const [editing, setEditing] = useState(null); // null | "new" | partId
+  const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
 
-  const filtered = parts.filter((p) => {
+  const sorted = [...parts].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  const filtered = sorted.filter((p) => {
     const t = search.toLowerCase();
     return !t || p.name?.toLowerCase().includes(t) || p.category?.toLowerCase().includes(t) || p.supplier?.toLowerCase().includes(t) || p.supplierCode?.toLowerCase().includes(t);
   });
+  const { dragIdx, overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(filtered, "parts", update);
 
   return (
     <div>
@@ -1348,10 +1395,17 @@ function PartsPage({ parts, update }) {
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={s.table}>
-            <thead><tr>{["Part", "Category", "Supplier", "Supplier Code", "Qty", "Reorder", "Cost", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["", "Part", "Category", "Supplier", "Supplier Code", "Qty", "Reorder", "Cost", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>
-              {filtered.map((p) => (
-                <tr key={p.id}>
+              {filtered.map((p, idx) => (
+                <tr key={p.id}
+                  draggable
+                  onDragStart={onDragStart(idx)}
+                  onDragOver={onDragOver(idx)}
+                  onDrop={onDrop(idx)}
+                  onDragEnd={onDragEnd}
+                  style={{ background: overIdx === idx ? C.accentGlow : "transparent", opacity: dragIdx === idx ? 0.4 : 1 }}>
+                  <td style={{ ...s.td, width: 30 }}><DragHandle /></td>
                   <td style={{ ...s.td, fontWeight: 500 }}>{p.name}</td>
                   <td style={{ ...s.td, color: C.textMuted }}>{p.category || "—"}</td>
                   <td style={{ ...s.td, color: C.textMuted }}>{p.supplier || "—"}</td>
