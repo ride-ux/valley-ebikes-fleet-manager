@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase, fetchAll, insertOne, updateOne, deleteOne, deleteWhere } from "./supabaseClient.js";
 
 // ─── DB TABLE NAMES ───
@@ -783,6 +783,71 @@ function DashboardPage({ stats, bikes, faults, parts, setPage, setSelectedBike }
   );
 }
 
+// ─── SEARCHABLE BIKE PICKER ───
+function BikeSelect({ bikes, value, onChange, placeholder }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const filtered = bikes.filter((b) => {
+    if (!search) return true;
+    const t = search.toLowerCase();
+    return (b.bikeNumber || "").toLowerCase().includes(t) ||
+      (b.name || "").toLowerCase().includes(t) ||
+      (b.serial || "").toLowerCase().includes(t) ||
+      (b.category || "").toLowerCase().includes(t);
+  });
+
+  const selected = bikes.find((b) => b.id === value);
+  const label = selected ? `#${selected.bikeNumber || "?"} — ${selected.name || "Unnamed"} ${selected.serial ? "(" + selected.serial + ")" : ""}` : "";
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <input
+        style={s.input}
+        value={open ? search : label}
+        onChange={(e) => { setSearch(e.target.value); if (!open) setOpen(true); }}
+        onFocus={() => { setOpen(true); setSearch(""); }}
+        placeholder={placeholder || "Search by bike #, name, or serial..."}
+      />
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1001,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+          maxHeight: 220, overflowY: "auto", marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+        }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: 12, fontSize: 13, color: C.textMuted, textAlign: "center" }}>No bikes match</div>
+          ) : filtered.map((b) => (
+            <div key={b.id}
+              style={{
+                padding: "10px 12px", cursor: "pointer",
+                background: value === b.id ? C.accentGlow : "transparent",
+                borderBottom: `1px solid ${C.border}22`,
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = C.surfaceHover}
+              onMouseOut={(e) => e.currentTarget.style.background = value === b.id ? C.accentGlow : "transparent"}
+              onClick={() => { onChange(b.id); setOpen(false); setSearch(""); }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                <span style={{ color: C.accent, fontFamily: MONO }}>#{b.bikeNumber || "?"}</span> — {b.name || "Unnamed"}
+              </div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                {b.category || ""} {b.serial ? `• Serial: ${b.serial}` : ""} • {b.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DRAG AND DROP REORDER ───
 const DragHandle = () => (
   <span style={{ cursor: "grab", color: C.textMuted, fontSize: 16, lineHeight: 1, userSelect: "none", padding: "0 4px" }} title="Drag to reorder">⠿</span>
@@ -1146,7 +1211,7 @@ function EditFaultModal({ fault, bikes, staff, onSave, onDelete, onClose }) {
   return (
     <ModalShell title="Edit Fault" onClose={onClose}>
       <Field label="Bike">
-        <Select value={f.bikeId} onChange={(v) => set("bikeId", v)} options={bikes.map((b) => [b.id, `${b.bikeNumber ? "#" + b.bikeNumber + " — " : ""}${b.name || b.id}`])} placeholder="Select bike..." />
+        <BikeSelect bikes={bikes} value={f.bikeId} onChange={(v) => set("bikeId", v)} />
       </Field>
       <Field label="Reported By">
         <input style={s.input} value={f.reportedBy} onChange={(e) => set("reportedBy", e.target.value)} />
@@ -1747,7 +1812,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
   return (
     <ModalShell title={isPre ? "Pre-Ride Check" : "Post-Ride Check"} onClose={onClose}>
       <Field label="Bike">
-        <Select value={bikeId} onChange={setBikeId} options={bikes.map((b) => [b.id, `${b.bikeNumber ? "#" + b.bikeNumber + " — " : ""}${b.name || b.id}`])} placeholder="Select bike..." />
+        <BikeSelect bikes={bikes} value={bikeId} onChange={setBikeId} />
       </Field>
       <Field label="Staff">
         <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
@@ -1790,7 +1855,7 @@ function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
   return (
     <ModalShell title="Report Fault" onClose={onClose}>
       <Field label="Bike">
-        <Select value={bikeId} onChange={setBikeId} options={bikes.map((b) => [b.id, b.name || b.id])} placeholder="Select bike..." />
+        <BikeSelect bikes={bikes} value={bikeId} onChange={setBikeId} />
       </Field>
       <Field label="Reported By">
         <input style={s.input} value={reporter} onChange={(e) => setReporter(e.target.value)} />
@@ -1824,7 +1889,7 @@ function ServiceModal({ bikes, staff, onSubmit, onClose }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   return (
     <ModalShell title="Schedule Service" onClose={onClose}>
-      <Field label="Bike"><Select value={f.bikeId} onChange={(v) => set("bikeId", v)} options={bikes.map((b) => [b.id, b.name || b.id])} placeholder="Select..." /></Field>
+      <Field label="Bike"><BikeSelect bikes={bikes} value={f.bikeId} onChange={(v) => set("bikeId", v)} /></Field>
       <Field label="Service Type"><Select value={f.serviceType} onChange={(v) => set("serviceType", v)} options={SERVICE_TYPES} placeholder="Select..." /></Field>
       <Field label="Due Date"><input style={s.input} type="date" value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} /></Field>
       <Field label="Assigned To"><input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} /></Field>
