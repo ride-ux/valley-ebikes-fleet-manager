@@ -640,7 +640,7 @@ function FleetManagerApp() {
 
       {/* PAGES */}
       {page === "dashboard" && <DashboardPage stats={stats} bikes={bikes} faults={faults} parts={parts} setPage={setPage} setSelectedBike={setSelectedBike} />}
-      {page === "bikes" && <BikesPage bikes={bikes} faults={faults} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
+      {page === "bikes" && <BikesPage bikes={bikes} faults={faults} services={services} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
       {page === "checks" && <ChecksPage checks={checks} bikes={bikes} setModal={setModal} />}
       {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} autoCreateService={autoCreateService} />}
       {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
@@ -885,7 +885,7 @@ function useDragReorder(items, key, update) {
 // ═══════════════════════════════════════════════
 // BIKES PAGE
 // ═══════════════════════════════════════════════
-function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, selectedBike, setSelectedBike, setModal, update, checks }) {
+function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTerm, selectedBike, setSelectedBike, setModal, update, checks }) {
   const [sortCol, setSortCol] = useState(null); // null = drag order, or column key
   const [sortDir, setSortDir] = useState("asc");
 
@@ -935,6 +935,7 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
   if (bike) {
     const bikeFaults = faults.filter((f) => f.bikeId === bike.id);
     const bikeChecks = checks.filter((c) => c.bikeId === bike.id);
+    const bikeServices = services.filter((sv) => sv.bikeId === bike.id);
     const bat = batteries.find((b) => b.id === bike.batteryId);
     return (
       <div>
@@ -1002,6 +1003,44 @@ function BikesPage({ bikes, faults, batteries, searchTerm, setSearchTerm, select
                 <span><span style={s.badge(c.result === "Passed" || c.result === "Ready" ? C.green : c.result === "Failed" || c.result === "Out of Service" ? C.red : C.yellow)}>{c.result}</span> {fmtDateTime(c.date)}</span>
               </div>
             ))
+          )}
+        </div>
+
+        {/* Service history */}
+        <div style={s.card}>
+          <h2 style={s.h2}>Service History ({bikeServices.length})</h2>
+          {bikeServices.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.textMuted }}>No service records</div>
+          ) : (
+            bikeServices.slice().reverse().map((sv) => {
+              const partsCost = (sv.partsUsed || []).reduce((sum, pu) => sum + (pu.cost || 0) * pu.qty, 0);
+              const partsCount = (sv.partsUsed || []).reduce((sum, pu) => sum + (pu.qty || 0), 0);
+              return (
+                <div key={sv.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.border}11` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{sv.serviceType}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                        {sv.assignedTo || "Unassigned"} • Due: {fmtDate(sv.dueDate)}
+                        {sv.completedDate ? ` • Completed: ${fmtDate(sv.completedDate)}` : ""}
+                      </div>
+                    </div>
+                    <span style={s.badge(sv.completedDate ? C.green : C.yellow)}>{sv.completedDate ? "Complete" : "Pending"}</span>
+                  </div>
+                  {sv.tasks && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{sv.tasks}</div>}
+                  {sv.workNotes && <div style={{ fontSize: 12, marginTop: 4 }}>{sv.workNotes}</div>}
+                  {partsCount > 0 && (
+                    <div style={{ fontSize: 12, color: C.accent, marginTop: 4 }}>
+                      {partsCount} part{partsCount > 1 ? "s" : ""} used • ${partsCost.toFixed(2)}
+                      <div style={{ color: C.textMuted, marginTop: 2 }}>
+                        {(sv.partsUsed || []).map((pu) => `${pu.name} ×${pu.qty}`).join(", ")}
+                      </div>
+                    </div>
+                  )}
+                  {sv.timeSpent && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Time: {sv.timeSpent}</div>}
+                </div>
+              );
+            })
           )}
         </div>
       </div>
