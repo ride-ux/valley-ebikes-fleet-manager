@@ -1335,7 +1335,13 @@ function ServicesPage({ services, bikes, parts, setModal, update }) {
               onMouseOut={(e) => e.currentTarget.style.borderColor = C.border}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{sv.serviceType} — {bikes.find((b) => b.id === sv.bikeId)?.name || sv.bikeId}</div>
+                  {(() => { const bike = bikes.find((b) => b.id === sv.bikeId); return (
+                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+                      <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || sv.bikeId}
+                      {bike?.serial && <span style={{ color: C.textMuted, fontWeight: 400, fontSize: 12, marginLeft: 8 }}>Serial: {bike.serial}</span>}
+                    </div>
+                  ); })()}
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{sv.serviceType}</div>
                   <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
                     {sv.assignedTo || "Unassigned"} • Due: {fmtDate(sv.dueDate)} {sv.completedDate ? `• Done: ${fmtDate(sv.completedDate)}` : ""}
                     {partsCount > 0 && ` • ${partsCount} part${partsCount > 1 ? "s" : ""} used`}
@@ -1429,9 +1435,10 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
       <div style={{ ...s.card, marginTop: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
+            <div style={{ fontFamily: MONO, fontSize: 13, color: C.accent, fontWeight: 700, marginBottom: 2 }}>#{bike?.bikeNumber || "?"} — {bike?.name || service.bikeId}</div>
             <h1 style={{ ...s.h1, marginBottom: 4 }}>{service.serviceType}</h1>
             <div style={{ fontSize: 13, color: C.textMuted }}>
-              {bike?.name || service.bikeId} • {bike?.category}
+              {bike?.category}{bike?.serial ? ` • Serial: ${bike.serial}` : ""}
             </div>
           </div>
           <span style={s.badge(isComplete ? C.green : C.yellow)}>{isComplete ? "Complete" : "In Progress"}</span>
