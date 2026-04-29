@@ -1008,7 +1008,12 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
 
         {/* Service history */}
         <div style={s.card}>
-          <h2 style={s.h2}>Service History ({bikeServices.length})</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ ...s.h2, margin: 0 }}>Service History ({bikeServices.length})</h2>
+            <div style={{ fontSize: 12, color: C.textMuted, textAlign: "right" }}>
+              <span style={{ fontFamily: MONO, color: C.accent, fontWeight: 700 }}>#{bike.bikeNumber || "—"}</span> • Serial: <span style={{ fontFamily: MONO }}>{bike.serial || "—"}</span>
+            </div>
+          </div>
           {bikeServices.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted }}>No service records</div>
           ) : (
