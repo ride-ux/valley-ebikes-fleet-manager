@@ -673,7 +673,7 @@ function FleetManagerApp() {
       {modal === "preRide" && <CheckModal type="pre-ride" bikes={bikes.filter((b) => b.status !== "Out of Service")} staff={staff} onSubmit={submitCheck} onClose={() => setModal(null)} preselect={selectedBike} />}
       {modal === "postRide" && <CheckModal type="post-ride" bikes={bikes} staff={staff} onSubmit={submitCheck} onClose={() => setModal(null)} preselect={selectedBike} />}
       {modal === "reportFault" && <FaultModal bikes={bikes} staff={staff} onSubmit={submitFault} onClose={() => setModal(null)} preselect={selectedBike} />}
-      {modal === "addService" && <ServiceModal bikes={bikes} staff={staff} onSubmit={(data) => { update("services", (prev) => [...prev, { ...data, id: uid("SVC"), created: now() }]); setModal(null); }} onClose={() => setModal(null)} />}
+      {modal === "addService" && <ServiceModal bikes={bikes} staff={staff} preselect={selectedBike} onSubmit={(data) => { update("services", (prev) => [...prev, { ...data, id: uid("SVC"), created: now() }]); setModal(null); }} onClose={() => setModal(null)} />}
 
       {/* MOBILE BOTTOM NAV */}
       <div style={s.mobileNav}>
@@ -968,6 +968,7 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
             <button style={s.btn("primary")} onClick={() => setModal("preRide")}>Pre-Ride Check</button>
             <button style={s.btn("secondary")} onClick={() => setModal("postRide")}>Post-Ride Check</button>
             <button style={s.btn("danger")} onClick={() => setModal("reportFault")}>Report Fault</button>
+            <button style={s.btn("secondary")} onClick={() => setModal("addService")}>+ Service</button>
             <button style={s.btn("ghost")} onClick={() => setModal("editBike")}>✎ Edit Details</button>
             <button style={s.btn("ghost")} onClick={() => setModal("deleteBike")}>🗑 Delete</button>
           </div>
@@ -1935,8 +1936,8 @@ function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
   );
 }
 
-function ServiceModal({ bikes, staff, onSubmit, onClose }) {
-  const [f, setF] = useState({ bikeId: "", serviceType: "", dueDate: "", assignedTo: staff[0]?.name || "", tasks: "" });
+function ServiceModal({ bikes, staff, onSubmit, onClose, preselect }) {
+  const [f, setF] = useState({ bikeId: preselect || "", serviceType: "", dueDate: new Date().toISOString().slice(0, 10), assignedTo: staff[0]?.name || "", tasks: "" });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   return (
     <ModalShell title="Schedule Service" onClose={onClose}>
