@@ -1175,11 +1175,12 @@ function ChecksPage({ checks, bikes, staff, setModal, update }) {
 // ─── UP KEEP TASKS ───
 const UPKEEP_TASKS = [
   { id: "checkHelmet", label: "Check and clean helmet" },
-  { id: "lubeBatteryKeys", label: "Lubricate all battery key holes" },
+  { id: "lubeBatteryKeys", label: "Lubricate battery key hole" },
   { id: "cleanBatteryTerminals", label: "Remove and clean battery terminals" },
   { id: "deepClean", label: "Deep clean of entire bike" },
   { id: "secureBox", label: "Secure box" },
   { id: "batteryCharged", label: "Check battery is 100% charged" },
+  { id: "tyrePressure", label: "Ensure correct tyre pressure" },
 ];
 
 function UpKeepView({ bikes, checks, staff, update }) {
