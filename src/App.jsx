@@ -1134,17 +1134,21 @@ function ChecksPage({ checks, bikes, setModal }) {
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={s.table}>
-            <thead><tr>{["Date", "Bike", "Type", "Staff", "Result"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Date", "Bike #", "Bike", "Type", "Staff", "Result"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>
-              {checks.slice().reverse().map((c) => (
+              {checks.slice().reverse().map((c) => {
+                const bike = bikes.find((b) => b.id === c.bikeId);
+                return (
                 <tr key={c.id}>
                   <td style={{ ...s.td, fontSize: 12 }}>{fmtDateTime(c.date)}</td>
-                  <td style={s.td}>{bikes.find((b) => b.id === c.bikeId)?.name || c.bikeId}</td>
+                  <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
+                  <td style={s.td}>{bike?.name || c.bikeId}</td>
                   <td style={s.td}>{c.type === "pre-ride" ? "Pre-Ride" : "Post-Ride"}</td>
                   <td style={s.td}>{c.staff}</td>
                   <td style={s.td}><span style={s.badge(c.result === "Passed" || c.result === "Ready" ? C.green : c.result === "Failed" || c.result === "Out of Service" ? C.red : C.yellow)}>{c.result}</span></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
