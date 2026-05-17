@@ -1127,13 +1127,10 @@ function ChecksPage({ checks, bikes, staff, setModal, update }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h1 style={s.h1}>Checks</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <button style={s.btn("primary")} onClick={() => setModal("preRide")}>Pre-Ride</button>
-          <button style={s.btn("secondary")} onClick={() => setModal("postRide")}>Post-Ride</button>
+          <button style={s.navBtn(tab === "upkeep")} onClick={() => setTab(tab === "upkeep" ? "checks" : "upkeep")}>Up Keep</button>
+          <button style={s.btn("primary")} onClick={() => { setTab("checks"); setModal("preRide"); }}>Pre-Ride</button>
+          <button style={s.btn("secondary")} onClick={() => { setTab("checks"); setModal("postRide"); }}>Post-Ride</button>
         </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        <button style={s.navBtn(tab === "checks")} onClick={() => setTab("checks")}>Pre-Ride / Post-Ride</button>
-        <button style={s.navBtn(tab === "upkeep")} onClick={() => setTab("upkeep")}>Up Keep</button>
       </div>
 
       {tab === "checks" && (
