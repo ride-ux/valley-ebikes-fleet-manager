@@ -1183,26 +1183,78 @@ const UPKEEP_TASKS = [
 
 function UpKeepView({ bikes, checks, staff, update }) {
   const [doingUpkeep, setDoingUpkeep] = useState(null); // bikeId
+  const [filter, setFilter] = useState("all"); // all | inProgress | completed | notStarted
 
-  // Get last upkeep date per bike
+  // Get all upkeep checks grouped by bike — find latest status
   const upkeepChecks = checks.filter((c) => c.type === "upkeep");
-  const lastUpkeep = {};
-  upkeepChecks.forEach((c) => {
-    if (!lastUpkeep[c.bikeId] || new Date(c.date) > new Date(lastUpkeep[c.bikeId].date)) {
-      lastUpkeep[c.bikeId] = c;
+
+  // For each bike, get the latest upkeep and figure out task completion state
+  const bikeUpkeepStatus = {};
+  bikes.forEach((bike) => {
+    const bikeChecks = upkeepChecks.filter((c) => c.bikeId === bike.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (bikeChecks.length === 0) {
+      bikeUpkeepStatus[bike.id] = { status: "notStarted", tasks: {}, lastDate: null, staff: null, checks: [] };
+      return;
     }
+    // Find the latest "Completed" check — everything after a completed check is a new cycle
+    const lastCompleted = bikeChecks.find((c) => c.result === "Completed");
+    const lastCompletedDate = lastCompleted ? new Date(lastCompleted.date) : null;
+
+    // Get all checks since last completed (or all if never completed) to build current task state
+    const currentCycleChecks = lastCompletedDate
+      ? bikeChecks.filter((c) => new Date(c.date) > lastCompletedDate || c.id === lastCompleted?.id)
+      : bikeChecks;
+
+    // Merge all task toggles from current cycle
+    const mergedTasks = {};
+    UPKEEP_TASKS.forEach((t) => { mergedTasks[t.id] = false; });
+    // Apply oldest first so latest overrides
+    [...currentCycleChecks].reverse().forEach((c) => {
+      if (c.toggles) {
+        Object.entries(c.toggles).forEach(([k, v]) => { if (v) mergedTasks[k] = true; });
+      }
+    });
+
+    const doneCount = UPKEEP_TASKS.filter((t) => mergedTasks[t.id]).length;
+    const latest = bikeChecks[0];
+    bikeUpkeepStatus[bike.id] = {
+      status: doneCount === UPKEEP_TASKS.length ? "completed" : doneCount > 0 ? "inProgress" : "notStarted",
+      tasks: mergedTasks,
+      doneCount,
+      lastDate: latest.date,
+      lastCompletedDate: lastCompleted?.date || null,
+      staff: latest.staff,
+      checks: currentCycleChecks,
+    };
   });
 
   const sorted = [...bikes].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
 
-  // Days since last upkeep
+  const filtered = sorted.filter((bike) => {
+    if (filter === "all") return true;
+    return bikeUpkeepStatus[bike.id]?.status === filter;
+  });
+
   const daysSince = (iso) => {
     if (!iso) return null;
     return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
   };
 
+  const counts = {
+    all: bikes.length,
+    inProgress: Object.values(bikeUpkeepStatus).filter((s) => s.status === "inProgress").length,
+    completed: Object.values(bikeUpkeepStatus).filter((s) => s.status === "completed").length,
+    notStarted: Object.values(bikeUpkeepStatus).filter((s) => s.status === "notStarted").length,
+  };
+
   return (
     <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["all", `All (${counts.all})`], ["inProgress", `In Progress (${counts.inProgress})`], ["completed", `Completed (${counts.completed})`], ["notStarted", `Not Started (${counts.notStarted})`]].map(([k, l]) => (
+          <button key={k} style={s.navBtn(filter === k)} onClick={() => setFilter(k)}>{l}</button>
+        ))}
+      </div>
+
       {bikes.length === 0 ? (
         <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No bikes in fleet yet.</div>
       ) : (
@@ -1210,31 +1262,37 @@ function UpKeepView({ bikes, checks, staff, update }) {
           <table style={s.table}>
             <thead>
               <tr>
-                {["Bike #", "Bike Name", "Category", "Last Up Keep", "Days Ago", "Staff", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}
+                {["Bike #", "Bike Name", "Category", "Status", "Tasks", "Last Updated", "Staff", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {sorted.map((bike) => {
-                const last = lastUpkeep[bike.id];
-                const days = last ? daysSince(last.date) : null;
-                const urgency = days === null ? C.red : days > 30 ? C.yellow : days > 60 ? C.red : C.green;
+              {filtered.map((bike) => {
+                const info = bikeUpkeepStatus[bike.id] || { status: "notStarted", doneCount: 0 };
+                const days = info.lastDate ? daysSince(info.lastDate) : null;
+                const statusColor = info.status === "completed" ? C.green : info.status === "inProgress" ? C.yellow : C.red;
+                const statusLabel = info.status === "completed" ? "Complete" : info.status === "inProgress" ? "In Progress" : "Not Started";
                 return (
                   <tr key={bike.id}>
                     <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike.bikeNumber || "?"}</td>
                     <td style={{ ...s.td, fontWeight: 600 }}>{bike.name || "—"}</td>
                     <td style={{ ...s.td, color: C.textMuted }}>{bike.category || "—"}</td>
-                    <td style={{ ...s.td, fontSize: 12 }}>{last ? fmtDate(last.date) : <span style={{ color: C.red }}>Never</span>}</td>
+                    <td style={s.td}><span style={s.badge(statusColor)}>{statusLabel}</span></td>
                     <td style={s.td}>
-                      {days === null ? (
-                        <span style={s.badge(C.red)}>No record</span>
+                      <span style={{ fontFamily: MONO, fontWeight: 700, color: info.doneCount === UPKEEP_TASKS.length ? C.green : info.doneCount > 0 ? C.yellow : C.textMuted }}>
+                        {info.doneCount || 0}/{UPKEEP_TASKS.length}
+                      </span>
+                    </td>
+                    <td style={{ ...s.td, fontSize: 12 }}>
+                      {info.lastDate ? (
+                        <span>{fmtDate(info.lastDate)} <span style={{ color: C.textMuted }}>({days}d ago)</span></span>
                       ) : (
-                        <span style={s.badge(urgency)}>{days}d ago</span>
+                        <span style={{ color: C.red }}>Never</span>
                       )}
                     </td>
-                    <td style={{ ...s.td, fontSize: 12, color: C.textMuted }}>{last?.staff || "—"}</td>
+                    <td style={{ ...s.td, fontSize: 12, color: C.textMuted }}>{info.staff || "—"}</td>
                     <td style={s.td}>
-                      <button style={s.btn("primary")} onClick={() => setDoingUpkeep(bike.id)}>
-                        Do Up Keep
+                      <button style={s.btn(info.status === "completed" ? "ghost" : "primary")} onClick={() => setDoingUpkeep(bike.id)}>
+                        {info.status === "completed" ? "Reset & Redo" : info.status === "inProgress" ? "Continue" : "Start"}
                       </button>
                     </td>
                   </tr>
@@ -1248,15 +1306,18 @@ function UpKeepView({ bikes, checks, staff, update }) {
       {doingUpkeep && (
         <UpKeepModal
           bike={bikes.find((b) => b.id === doingUpkeep)}
+          existingTasks={bikeUpkeepStatus[doingUpkeep]?.status === "completed" ? {} : bikeUpkeepStatus[doingUpkeep]?.tasks || {}}
           staff={staff}
           onSubmit={(data) => {
+            const doneCount = UPKEEP_TASKS.filter((t) => data.toggles[t.id]).length;
+            const result = doneCount === UPKEEP_TASKS.length ? "Completed" : "In Progress";
             update("checks", (prev) => [...prev, {
               ...data,
               id: uid("CHK"),
               bikeId: doingUpkeep,
               type: "upkeep",
               date: now(),
-              result: "Completed",
+              result,
             }]);
             setDoingUpkeep(null);
           }}
@@ -1267,12 +1328,18 @@ function UpKeepView({ bikes, checks, staff, update }) {
   );
 }
 
-function UpKeepModal({ bike, staff, onSubmit, onClose }) {
+function UpKeepModal({ bike, existingTasks, staff, onSubmit, onClose }) {
   const [staffName, setStaffName] = useState(staff[0]?.name || "");
-  const [tasks, setTasks] = useState(Object.fromEntries(UPKEEP_TASKS.map((t) => [t.id, false])));
+  const [tasks, setTasks] = useState(() => {
+    const initial = {};
+    UPKEEP_TASKS.forEach((t) => { initial[t.id] = existingTasks[t.id] || false; });
+    return initial;
+  });
   const [notes, setNotes] = useState("");
 
-  const allDone = UPKEEP_TASKS.every((t) => tasks[t.id]);
+  const doneCount = UPKEEP_TASKS.filter((t) => tasks[t.id]).length;
+  const allDone = doneCount === UPKEEP_TASKS.length;
+  const anyDone = doneCount > 0;
 
   return (
     <ModalShell title="Up Keep" onClose={onClose}>
@@ -1286,7 +1353,12 @@ function UpKeepModal({ bike, staff, onSubmit, onClose }) {
         <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
       </Field>
       <div style={{ ...s.card, padding: 14, margin: "12px 0" }}>
-        <div style={{ ...s.label, marginBottom: 10 }}>Tasks</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={s.label}>Tasks</span>
+          <span style={{ fontSize: 12, fontFamily: MONO, fontWeight: 700, color: allDone ? C.green : anyDone ? C.yellow : C.textMuted }}>
+            {doneCount}/{UPKEEP_TASKS.length}
+          </span>
+        </div>
         {UPKEEP_TASKS.map((task) => (
           <div key={task.id} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
@@ -1309,13 +1381,13 @@ function UpKeepModal({ bike, staff, onSubmit, onClose }) {
       </div>
       <Field label="Notes"><textarea style={{ ...s.input, minHeight: 60 }} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any additional notes..." /></Field>
       <button
-        style={{ ...s.btn(allDone ? "primary" : "ghost"), width: "100%", justifyContent: "center", opacity: allDone ? 1 : 0.5 }}
+        style={{ ...s.btn(allDone ? "primary" : anyDone ? "secondary" : "ghost"), width: "100%", justifyContent: "center", opacity: anyDone ? 1 : 0.5 }}
         onClick={() => {
-          if (!allDone) return alert("Please complete all tasks before submitting");
+          if (!anyDone) return alert("Please complete at least one task before submitting");
           if (!staffName) return alert("Enter staff name");
           onSubmit({ staff: staffName, toggles: tasks, notes });
         }}>
-        <Icon d={Icons.check} size={16} /> {allDone ? "Complete Up Keep" : `${UPKEEP_TASKS.filter((t) => tasks[t.id]).length} / ${UPKEEP_TASKS.length} tasks done`}
+        <Icon d={Icons.check} size={16} /> {allDone ? "Complete Up Keep" : anyDone ? `Save Progress (${doneCount}/${UPKEEP_TASKS.length})` : "No tasks completed"}
       </button>
     </ModalShell>
   );
