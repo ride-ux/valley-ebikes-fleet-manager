@@ -641,7 +641,7 @@ function FleetManagerApp() {
       {/* PAGES */}
       {page === "dashboard" && <DashboardPage stats={stats} bikes={bikes} faults={faults} parts={parts} setPage={setPage} setSelectedBike={setSelectedBike} />}
       {page === "bikes" && <BikesPage bikes={bikes} faults={faults} services={services} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
-      {page === "checks" && <ChecksPage checks={checks} bikes={bikes} setModal={setModal} />}
+      {page === "checks" && <ChecksPage checks={checks} bikes={bikes} staff={staff} setModal={setModal} update={update} />}
       {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} autoCreateService={autoCreateService} />}
       {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
       {page === "batteries" && <BatteriesPage batteries={batteries} bikes={bikes} setModal={setModal} update={update} />}
@@ -1119,41 +1119,205 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
 // ═══════════════════════════════════════════════
 // CHECKS PAGE
 // ═══════════════════════════════════════════════
-function ChecksPage({ checks, bikes, setModal }) {
+function ChecksPage({ checks, bikes, staff, setModal, update }) {
+  const [tab, setTab] = useState("checks"); // checks | upkeep
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={s.h1}>Checks ({checks.length})</h1>
+        <h1 style={s.h1}>Checks</h1>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={s.btn("primary")} onClick={() => setModal("preRide")}>Pre-Ride</button>
           <button style={s.btn("secondary")} onClick={() => setModal("postRide")}>Post-Ride</button>
         </div>
       </div>
-      {checks.length === 0 ? (
-        <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No checks completed yet.</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        <button style={s.navBtn(tab === "checks")} onClick={() => setTab("checks")}>Pre-Ride / Post-Ride</button>
+        <button style={s.navBtn(tab === "upkeep")} onClick={() => setTab("upkeep")}>Up Keep</button>
+      </div>
+
+      {tab === "checks" && (
+        <>
+          {checks.length === 0 ? (
+            <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No checks completed yet.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={s.table}>
+                <thead><tr>{["Date", "Bike #", "Bike", "Type", "Staff", "Result"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {checks.slice().reverse().map((c) => {
+                    const bike = bikes.find((b) => b.id === c.bikeId);
+                    return (
+                    <tr key={c.id}>
+                      <td style={{ ...s.td, fontSize: 12 }}>{fmtDateTime(c.date)}</td>
+                      <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
+                      <td style={s.td}>{bike?.name || c.bikeId}</td>
+                      <td style={s.td}>{c.type === "pre-ride" ? "Pre-Ride" : c.type === "post-ride" ? "Post-Ride" : "Up Keep"}</td>
+                      <td style={s.td}>{c.staff}</td>
+                      <td style={s.td}><span style={s.badge(c.result === "Passed" || c.result === "Ready" || c.result === "Completed" ? C.green : c.result === "Failed" || c.result === "Out of Service" ? C.red : C.yellow)}>{c.result}</span></td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "upkeep" && (
+        <UpKeepView bikes={bikes} checks={checks} staff={staff} update={update} />
+      )}
+    </div>
+  );
+}
+
+// ─── UP KEEP TASKS ───
+const UPKEEP_TASKS = [
+  { id: "lubeKeyholes", label: "Lubricate all key holes on locks" },
+  { id: "lubeBatteryKeys", label: "Lubricate all battery key holes" },
+  { id: "cleanBatteryTerminals", label: "Remove and clean all battery terminals" },
+  { id: "deepClean", label: "Deep clean of all bike components" },
+  { id: "secureBikeBoxes", label: "Secure all bike boxes" },
+];
+
+function UpKeepView({ bikes, checks, staff, update }) {
+  const [doingUpkeep, setDoingUpkeep] = useState(null); // bikeId
+
+  // Get last upkeep date per bike
+  const upkeepChecks = checks.filter((c) => c.type === "upkeep");
+  const lastUpkeep = {};
+  upkeepChecks.forEach((c) => {
+    if (!lastUpkeep[c.bikeId] || new Date(c.date) > new Date(lastUpkeep[c.bikeId].date)) {
+      lastUpkeep[c.bikeId] = c;
+    }
+  });
+
+  const sorted = [...bikes].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+
+  // Days since last upkeep
+  const daysSince = (iso) => {
+    if (!iso) return null;
+    return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  };
+
+  return (
+    <div>
+      {bikes.length === 0 ? (
+        <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No bikes in fleet yet.</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={s.table}>
-            <thead><tr>{["Date", "Bike #", "Bike", "Type", "Staff", "Result"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead>
+              <tr>
+                {["Bike #", "Bike Name", "Category", "Last Up Keep", "Days Ago", "Staff", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}
+              </tr>
+            </thead>
             <tbody>
-              {checks.slice().reverse().map((c) => {
-                const bike = bikes.find((b) => b.id === c.bikeId);
+              {sorted.map((bike) => {
+                const last = lastUpkeep[bike.id];
+                const days = last ? daysSince(last.date) : null;
+                const urgency = days === null ? C.red : days > 30 ? C.yellow : days > 60 ? C.red : C.green;
                 return (
-                <tr key={c.id}>
-                  <td style={{ ...s.td, fontSize: 12 }}>{fmtDateTime(c.date)}</td>
-                  <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
-                  <td style={s.td}>{bike?.name || c.bikeId}</td>
-                  <td style={s.td}>{c.type === "pre-ride" ? "Pre-Ride" : "Post-Ride"}</td>
-                  <td style={s.td}>{c.staff}</td>
-                  <td style={s.td}><span style={s.badge(c.result === "Passed" || c.result === "Ready" ? C.green : c.result === "Failed" || c.result === "Out of Service" ? C.red : C.yellow)}>{c.result}</span></td>
-                </tr>
+                  <tr key={bike.id}>
+                    <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike.bikeNumber || "?"}</td>
+                    <td style={{ ...s.td, fontWeight: 600 }}>{bike.name || "—"}</td>
+                    <td style={{ ...s.td, color: C.textMuted }}>{bike.category || "—"}</td>
+                    <td style={{ ...s.td, fontSize: 12 }}>{last ? fmtDate(last.date) : <span style={{ color: C.red }}>Never</span>}</td>
+                    <td style={s.td}>
+                      {days === null ? (
+                        <span style={s.badge(C.red)}>No record</span>
+                      ) : (
+                        <span style={s.badge(urgency)}>{days}d ago</span>
+                      )}
+                    </td>
+                    <td style={{ ...s.td, fontSize: 12, color: C.textMuted }}>{last?.staff || "—"}</td>
+                    <td style={s.td}>
+                      <button style={s.btn("primary")} onClick={() => setDoingUpkeep(bike.id)}>
+                        Do Up Keep
+                      </button>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
       )}
+
+      {doingUpkeep && (
+        <UpKeepModal
+          bike={bikes.find((b) => b.id === doingUpkeep)}
+          staff={staff}
+          onSubmit={(data) => {
+            update("checks", (prev) => [...prev, {
+              ...data,
+              id: uid("CHK"),
+              bikeId: doingUpkeep,
+              type: "upkeep",
+              date: now(),
+              result: "Completed",
+            }]);
+            setDoingUpkeep(null);
+          }}
+          onClose={() => setDoingUpkeep(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function UpKeepModal({ bike, staff, onSubmit, onClose }) {
+  const [staffName, setStaffName] = useState(staff[0]?.name || "");
+  const [tasks, setTasks] = useState(Object.fromEntries(UPKEEP_TASKS.map((t) => [t.id, false])));
+  const [notes, setNotes] = useState("");
+
+  const allDone = UPKEEP_TASKS.every((t) => tasks[t.id]);
+
+  return (
+    <ModalShell title="Up Keep" onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>
+          <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || "Unnamed"}
+        </div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{bike?.category}</div>
+      </div>
+      <Field label="Staff">
+        <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
+      </Field>
+      <div style={{ ...s.card, padding: 14, margin: "12px 0" }}>
+        <div style={{ ...s.label, marginBottom: 10 }}>Tasks</div>
+        {UPKEEP_TASKS.map((task) => (
+          <div key={task.id} style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+            borderBottom: `1px solid ${C.border}22`, cursor: "pointer",
+          }} onClick={() => setTasks((p) => ({ ...p, [task.id]: !p[task.id] }))}>
+            <div style={{
+              width: 22, height: 22, borderRadius: 6,
+              border: tasks[task.id] ? `2px solid ${C.green}` : `2px solid ${C.border}`,
+              background: tasks[task.id] ? C.greenBg : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, color: C.green, fontWeight: 700, flexShrink: 0,
+            }}>
+              {tasks[task.id] && "✓"}
+            </div>
+            <span style={{ fontSize: 14, textDecoration: tasks[task.id] ? "line-through" : "none", color: tasks[task.id] ? C.textMuted : C.text }}>
+              {task.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <Field label="Notes"><textarea style={{ ...s.input, minHeight: 60 }} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any additional notes..." /></Field>
+      <button
+        style={{ ...s.btn(allDone ? "primary" : "ghost"), width: "100%", justifyContent: "center", opacity: allDone ? 1 : 0.5 }}
+        onClick={() => {
+          if (!allDone) return alert("Please complete all tasks before submitting");
+          if (!staffName) return alert("Enter staff name");
+          onSubmit({ staff: staffName, toggles: tasks, notes });
+        }}>
+        <Icon d={Icons.check} size={16} /> {allDone ? "Complete Up Keep" : `${UPKEEP_TASKS.filter((t) => tasks[t.id]).length} / ${UPKEEP_TASKS.length} tasks done`}
+      </button>
+    </ModalShell>
   );
 }
 
