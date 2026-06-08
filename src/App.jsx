@@ -1328,7 +1328,7 @@ function UpKeepView({ bikes, checks, staff, update }) {
 }
 
 function UpKeepModal({ bike, existingTasks, staff, onSubmit, onClose }) {
-  const [staffName, setStaffName] = useState(staff[0]?.name || "");
+  const [staffName, setStaffName] = useState("");
   const [tasks, setTasks] = useState(() => {
     const initial = {};
     UPKEEP_TASKS.forEach((t) => { initial[t.id] = existingTasks[t.id] || false; });
@@ -1349,7 +1349,7 @@ function UpKeepModal({ bike, existingTasks, staff, onSubmit, onClose }) {
         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{bike?.category}</div>
       </div>
       <Field label="Staff">
-        <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
+        <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Your name (required)" />
       </Field>
       <div style={{ ...s.card, padding: 14, margin: "12px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1515,7 +1515,7 @@ function EditFaultModal({ fault, bikes, staff, onSave, onDelete, onClose }) {
         <Select value={f.status} onChange={(v) => set("status", v)} options={FAULT_STATUS} />
       </Field>
       <Field label="Assigned To">
-        <input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} placeholder="Staff name" />
+        <input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} placeholder="Your name (required)" />
       </Field>
       <Field label="Description">
         <textarea style={{ ...s.input, minHeight: 50 }} value={f.description} onChange={(e) => set("description", e.target.value)} />
@@ -2086,7 +2086,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
   const items = isPre ? CHECK_ITEMS_PRE : CHECK_ITEMS_POST;
   const results = isPre ? PRE_RESULTS : POST_RESULTS;
   const [bikeId, setBikeId] = useState(preselect || "");
-  const [staffName, setStaffName] = useState(staff[0]?.name || "");
+  const [staffName, setStaffName] = useState("");
   const [toggles, setToggles] = useState(Object.fromEntries(items.map((i) => [i, true])));
   const [result, setResult] = useState(results[0]);
   const [notes, setNotes] = useState("");
@@ -2106,7 +2106,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
         <BikeSelect bikes={bikes} value={bikeId} onChange={setBikeId} />
       </Field>
       <Field label="Staff">
-        <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
+        <input style={s.input} value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Your name (required)" />
       </Field>
       {isPre && (
         <Field label="Odometer (km)">
@@ -2125,6 +2125,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
       <Field label="Notes"><textarea style={{ ...s.input, minHeight: 60 }} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       <button style={s.btn(result === "Failed" || result === "Out of Service" ? "danger" : "primary")} onClick={() => {
         if (!bikeId) return alert("Select a bike");
+        if (!staffName.trim()) return alert("Enter your name");
         onSubmit({ bikeId, staff: staffName, type, toggles, result, notes, odometer: isPre ? odometer : undefined });
       }}>
         <Icon d={Icons.check} size={16} /> Submit {isPre ? "Pre" : "Post"}-Ride
@@ -2135,7 +2136,7 @@ function CheckModal({ type, bikes, staff, onSubmit, onClose, preselect }) {
 
 function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
   const [bikeId, setBikeId] = useState(preselect || "");
-  const [reporter, setReporter] = useState(staff[0]?.name || "");
+  const [reporter, setReporter] = useState("");
   const [category, setCategory] = useState("");
   const [code, setCode] = useState("");
   const [severity, setSeverity] = useState("Service Required");
@@ -2149,7 +2150,7 @@ function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
         <BikeSelect bikes={bikes} value={bikeId} onChange={setBikeId} />
       </Field>
       <Field label="Reported By">
-        <input style={s.input} value={reporter} onChange={(e) => setReporter(e.target.value)} />
+        <input style={s.input} value={reporter} onChange={(e) => setReporter(e.target.value)} placeholder="Your name (required)" />
       </Field>
       <Field label="Category">
         <Select value={category} onChange={(v) => { setCategory(v); setCode(""); }} options={FAULT_CATEGORIES} placeholder="Select..." />
@@ -2167,6 +2168,7 @@ function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
       </Field>
       <button style={s.btn("danger")} onClick={() => {
         if (!bikeId || !category) return alert("Select bike and category");
+        if (!reporter.trim()) return alert("Enter your name");
         onSubmit({ bikeId, reportedBy: reporter, category, code: code || "—", severity, description });
       }}>
         <Icon d={Icons.fault} size={16} /> Submit Fault
@@ -2176,17 +2178,18 @@ function FaultModal({ bikes, staff, onSubmit, onClose, preselect }) {
 }
 
 function ServiceModal({ bikes, staff, onSubmit, onClose, preselect }) {
-  const [f, setF] = useState({ bikeId: preselect || "", serviceType: "", dueDate: new Date().toISOString().slice(0, 10), assignedTo: staff[0]?.name || "", tasks: "" });
+  const [f, setF] = useState({ bikeId: preselect || "", serviceType: "", dueDate: new Date().toISOString().slice(0, 10), assignedTo: "", tasks: "" });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   return (
     <ModalShell title="Schedule Service" onClose={onClose}>
       <Field label="Bike"><BikeSelect bikes={bikes} value={f.bikeId} onChange={(v) => set("bikeId", v)} /></Field>
       <Field label="Service Type"><Select value={f.serviceType} onChange={(v) => set("serviceType", v)} options={SERVICE_TYPES} placeholder="Select..." /></Field>
       <Field label="Due Date"><input style={s.input} type="date" value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} /></Field>
-      <Field label="Assigned To"><input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} /></Field>
+      <Field label="Assigned To"><input style={s.input} value={f.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} placeholder="Your name (required)" /></Field>
       <Field label="Tasks"><textarea style={{ ...s.input, minHeight: 60 }} value={f.tasks} onChange={(e) => set("tasks", e.target.value)} /></Field>
       <button style={s.btn("primary")} onClick={() => {
         if (!f.bikeId || !f.serviceType) return alert("Select bike and service type");
+        if (!f.assignedTo.trim()) return alert("Enter staff name");
         onSubmit(f);
       }}><Icon d={Icons.save} size={16} /> Schedule</button>
     </ModalShell>
