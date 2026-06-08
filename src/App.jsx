@@ -648,7 +648,7 @@ function FleetManagerApp() {
       {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} autoCreateService={autoCreateService} />}
       {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
       {page === "batteries" && <BatteriesPage batteries={batteries} bikes={bikes} setModal={setModal} update={update} />}
-      {page === "parts" && <PartsPage parts={parts} update={update} />}
+      {page === "parts" && <PartsPage parts={parts} update={update} services={services} bikes={bikes} />}
       {page === "reports" && <ReportsPage bikes={bikes} checks={checks} faults={faults} services={services} batteries={batteries} parts={parts} />}
 
       {/* MODALS */}
@@ -1943,9 +1943,10 @@ function BatteriesPage({ batteries, bikes, setModal, update }) {
 // ═══════════════════════════════════════════════
 // PARTS PAGE
 // ═══════════════════════════════════════════════
-function PartsPage({ parts, update }) {
+function PartsPage({ parts, update, services, bikes }) {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
+  const [viewingHistory, setViewingHistory] = useState(null); // partId
 
   const sorted = [...parts].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
   const filtered = sorted.filter((p) => {
@@ -1953,6 +1954,16 @@ function PartsPage({ parts, update }) {
     return !t || p.name?.toLowerCase().includes(t) || p.category?.toLowerCase().includes(t) || p.supplier?.toLowerCase().includes(t) || p.supplierCode?.toLowerCase().includes(t);
   });
   const { dragIdx, overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(filtered, "parts", update);
+
+  // Build usage counts per part
+  const partUsage = {};
+  services.forEach((sv) => {
+    if (!sv.completedDate) return;
+    (sv.partsUsed || []).forEach((pu) => {
+      if (!partUsage[pu.partId]) partUsage[pu.partId] = 0;
+      partUsage[pu.partId] += pu.qty;
+    });
+  });
 
   return (
     <div>
@@ -1970,7 +1981,7 @@ function PartsPage({ parts, update }) {
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={s.table}>
-            <thead><tr>{["", "Part", "Category", "Supplier", "Supplier Code", "Qty", "Reorder", "Cost", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["", "Part", "Category", "Supplier", "Code", "Qty", "Reorder", "Cost", "Used", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map((p, idx) => (
                 <tr key={p.id}
@@ -1988,6 +1999,11 @@ function PartsPage({ parts, update }) {
                   <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: p.qty <= p.reorder ? C.red : C.text }}>{p.qty}</td>
                   <td style={{ ...s.td, fontFamily: MONO, color: C.textMuted }}>{p.reorder}</td>
                   <td style={{ ...s.td, fontFamily: MONO, color: C.textMuted }}>${p.cost || 0}</td>
+                  <td style={{ ...s.td, fontFamily: MONO, color: partUsage[p.id] ? C.accent : C.textMuted }}>
+                    {partUsage[p.id] ? (
+                      <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setViewingHistory(p.id)}>{partUsage[p.id]}</span>
+                    ) : "0"}
+                  </td>
                   <td style={s.td}>
                     {p.qty <= p.reorder ? <span style={s.badge(C.red)}>LOW</span> : <span style={s.badge(C.green)}>OK</span>}
                   </td>
@@ -1997,6 +2013,7 @@ function PartsPage({ parts, update }) {
                         onClick={() => update("parts", (prev) => prev.map((pp) => pp.id === p.id ? { ...pp, qty: Math.max(0, pp.qty - 1) } : pp))}>−</button>
                       <button style={{ ...s.btn("ghost"), padding: "4px 8px", fontSize: 11 }}
                         onClick={() => update("parts", (prev) => prev.map((pp) => pp.id === p.id ? { ...pp, qty: pp.qty + 1 } : pp))}>+</button>
+                      <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 11 }} onClick={() => setViewingHistory(p.id)}>History</button>
                       <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 11 }} onClick={() => setEditing(p.id)}>Edit</button>
                     </div>
                   </td>
@@ -2025,7 +2042,96 @@ function PartsPage({ parts, update }) {
         } : null}
         onClose={() => setEditing(null)}
       />}
+
+      {viewingHistory && <PartHistoryModal
+        part={parts.find((p) => p.id === viewingHistory)}
+        services={services}
+        bikes={bikes}
+        onClose={() => setViewingHistory(null)}
+      />}
     </div>
+  );
+}
+
+function PartHistoryModal({ part, services, bikes, onClose }) {
+  if (!part) return null;
+
+  // Find all completed services that used this part
+  const usage = [];
+  services.forEach((sv) => {
+    if (!sv.completedDate) return;
+    (sv.partsUsed || []).forEach((pu) => {
+      if (pu.partId === part.id) {
+        const bike = bikes.find((b) => b.id === sv.bikeId);
+        usage.push({
+          serviceId: sv.id,
+          bikeNumber: bike?.bikeNumber || "?",
+          bikeName: bike?.name || "Unknown",
+          bikeSerial: bike?.serial || "",
+          category: bike?.category || "",
+          serviceType: sv.serviceType,
+          completedDate: sv.completedDate,
+          completedBy: sv.completedBy || sv.assignedTo || "—",
+          qty: pu.qty,
+          cost: (pu.cost || 0) * pu.qty,
+        });
+      }
+    });
+  });
+
+  usage.sort((a, b) => new Date(b.completedDate) - new Date(a.completedDate));
+
+  const totalUsed = usage.reduce((sum, u) => sum + u.qty, 0);
+  const totalCost = usage.reduce((sum, u) => sum + u.cost, 0);
+
+  return (
+    <ModalShell title="Part Usage History" onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{part.name}</div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+          {part.category}{part.supplier ? ` • ${part.supplier}` : ""}{part.supplierCode ? ` • ${part.supplierCode}` : ""}
+        </div>
+        <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+          <div style={s.statCard(C.accent, C.accentGlow)}>
+            <span style={{ ...s.statNum(C.accent), fontSize: 22 }}>{totalUsed}</span>
+            <span style={s.statLabel}>Total Used</span>
+          </div>
+          <div style={s.statCard(C.blue, C.blueBg)}>
+            <span style={{ ...s.statNum(C.blue), fontSize: 22 }}>{usage.length}</span>
+            <span style={s.statLabel}>Services</span>
+          </div>
+          <div style={s.statCard(C.green, C.greenBg)}>
+            <span style={{ ...s.statNum(C.green), fontSize: 22 }}>${totalCost.toFixed(0)}</span>
+            <span style={s.statLabel}>Total Cost</span>
+          </div>
+        </div>
+      </div>
+
+      {usage.length === 0 ? (
+        <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: 20 }}>This part hasn't been used in any completed services yet.</div>
+      ) : (
+        <div style={{ maxHeight: 400, overflowY: "auto" }}>
+          {usage.map((u, i) => (
+            <div key={i} style={{ padding: "12px 0", borderBottom: `1px solid ${C.border}22` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>
+                    <span style={{ color: C.accent, fontFamily: MONO }}>#{u.bikeNumber}</span> — {u.bikeName}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                    {u.category}{u.bikeSerial ? ` • Serial: ${u.bikeSerial}` : ""}
+                  </div>
+                </div>
+                <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 14 }}>×{u.qty}</span>
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
+                {u.serviceType} • {fmtDate(u.completedDate)} • {u.completedBy} • ${u.cost.toFixed(2)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </ModalShell>
   );
 }
 
