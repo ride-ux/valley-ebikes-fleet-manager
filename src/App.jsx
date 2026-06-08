@@ -34,7 +34,8 @@ const fromDb = {
   faults: (r) => ({
     id: r.id, bikeId: r.bike_id, reportedBy: r.reported_by, category: r.category,
     code: r.code, severity: r.severity, description: r.description, status: r.status,
-    assignedTo: r.assigned_to, resolution: r.resolution, partsUsed: r.parts_used,
+    assignedTo: r.assigned_to, resolution: r.resolution, resolvedBy: r.resolved_by,
+    timeSpent: r.time_spent, partsUsed: r.parts_used,
     closedDate: r.closed_date, date: r.date, created: r.created_at,
   }),
   services: (r) => ({
@@ -71,7 +72,8 @@ const toDb = {
   faults: (o) => ({
     bike_id: o.bikeId, reported_by: o.reportedBy, category: o.category, code: o.code,
     severity: o.severity, description: o.description, status: o.status,
-    assigned_to: o.assignedTo || null, resolution: o.resolution, parts_used: o.partsUsed,
+    assigned_to: o.assignedTo || null, resolution: o.resolution, resolved_by: o.resolvedBy || null,
+    time_spent: o.timeSpent || null, parts_used: o.partsUsed,
     closed_date: o.closedDate || null, date: o.date || new Date().toISOString(),
   }),
   services: (o) => ({
@@ -586,8 +588,8 @@ function FleetManagerApp() {
   };
 
   // ─── RESOLVE FAULT ───
-  const resolveFault = (faultId, notes, partsUsed) => {
-    update("faults", (prev) => prev.map((f) => f.id === faultId ? { ...f, status: "Resolved", resolution: notes, partsUsed, closedDate: now() } : f));
+  const resolveFault = (faultId, notes, partsUsed, resolvedBy, timeSpent) => {
+    update("faults", (prev) => prev.map((f) => f.id === faultId ? { ...f, status: "Resolved", resolution: notes, resolvedBy, timeSpent, partsUsed, closedDate: now() } : f));
   };
 
   // ─── NAV PAGES ───
@@ -1399,6 +1401,7 @@ function UpKeepModal({ bike, existingTasks, staff, onSubmit, onClose }) {
 function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, autoCreateService }) {
   const [filter, setFilter] = useState("open");
   const [editingFault, setEditingFault] = useState(null);
+  const [resolvingFault, setResolvingFault] = useState(null);
   const filtered = faults.filter((f) => {
     if (filter === "open") return f.status === "Open" || f.status === "In Progress" || f.status === "Waiting Parts";
     if (filter === "resolved") return f.status === "Resolved" || f.status === "Closed";
@@ -1437,14 +1440,17 @@ function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, auto
               </div>
             </div>
             {f.description && <div style={{ marginTop: 8, fontSize: 13 }}>{f.description}</div>}
-            {f.resolution && <div style={{ marginTop: 6, fontSize: 12, color: C.green }}>✓ {f.resolution}</div>}
+            {f.resolution && (
+              <div style={{ marginTop: 6, fontSize: 12, color: C.green }}>
+                ✓ {f.resolution}
+                {f.resolvedBy && <span style={{ color: C.textMuted }}> • Resolved by: {f.resolvedBy}</span>}
+                {f.timeSpent && <span style={{ color: C.textMuted }}> • Time: {f.timeSpent}</span>}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
               <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => setEditingFault(f.id)}>✎ Edit</button>
               {(f.status === "Open" || f.status === "In Progress") && (
-                <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => {
-                  const notes = prompt("Resolution notes:");
-                  if (notes) resolveFault(f.id, notes, "");
-                }}>Resolve</button>
+                <button style={{ ...s.btn("primary"), fontSize: 12 }} onClick={() => setResolvingFault(f.id)}>Resolve</button>
               )}
             </div>
           </div>
@@ -1474,7 +1480,52 @@ function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, auto
         }}
         onClose={() => setEditingFault(null)}
       />}
+
+      {resolvingFault && <ResolveFaultModal
+        fault={faults.find((f) => f.id === resolvingFault)}
+        bikes={bikes}
+        onResolve={(data) => {
+          resolveFault(resolvingFault, data.resolution, "", data.resolvedBy, data.timeSpent);
+          setResolvingFault(null);
+        }}
+        onClose={() => setResolvingFault(null)}
+      />}
     </div>
+  );
+}
+
+function ResolveFaultModal({ fault, bikes, onResolve, onClose }) {
+  const [resolvedBy, setResolvedBy] = useState("");
+  const [timeSpent, setTimeSpent] = useState("");
+  const [resolution, setResolution] = useState("");
+  const bike = bikes.find((b) => b.id === fault?.bikeId);
+
+  return (
+    <ModalShell title="Resolve Fault" onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>
+          <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || "Unnamed"}
+        </div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{fault?.code} — {fault?.category} • {fault?.severity}</div>
+        {fault?.description && <div style={{ fontSize: 13, marginTop: 4 }}>{fault.description}</div>}
+      </div>
+      <Field label="Completed By (required)">
+        <input style={s.input} value={resolvedBy} onChange={(e) => setResolvedBy(e.target.value)} placeholder="Your name (required)" />
+      </Field>
+      <Field label="Time Spent (required)">
+        <input style={s.input} value={timeSpent} onChange={(e) => setTimeSpent(e.target.value)} placeholder="e.g. 20 min, 1 hour" />
+      </Field>
+      <Field label="Resolution Notes">
+        <textarea style={{ ...s.input, minHeight: 60 }} value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="What was done to fix it?" />
+      </Field>
+      <button style={s.btn("primary")} onClick={() => {
+        if (!resolvedBy.trim()) return alert("Enter who completed this (required)");
+        if (!timeSpent.trim()) return alert("Enter time spent (required)");
+        onResolve({ resolvedBy, timeSpent, resolution });
+      }}>
+        <Icon d={Icons.check} size={16} /> Resolve Fault
+      </button>
+    </ModalShell>
   );
 }
 
