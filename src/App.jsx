@@ -39,7 +39,7 @@ const fromDb = {
   }),
   services: (r) => ({
     id: r.id, bikeId: r.bike_id, serviceType: r.service_type, dueDate: r.due_date,
-    completedDate: r.completed_date, assignedTo: r.assigned_to, tasks: r.tasks,
+    completedDate: r.completed_date, completedBy: r.completed_by, assignedTo: r.assigned_to, tasks: r.tasks,
     workNotes: r.work_notes, partsUsed: r.parts_used || [], timeSpent: r.time_spent,
     outcome: r.outcome, created: r.created_at,
   }),
@@ -76,7 +76,8 @@ const toDb = {
   }),
   services: (o) => ({
     bike_id: o.bikeId, service_type: o.serviceType, due_date: o.dueDate || null,
-    completed_date: o.completedDate || null, assigned_to: o.assignedTo, tasks: o.tasks,
+    completed_date: o.completedDate || null, completed_by: o.completedBy || null,
+    assigned_to: o.assignedTo, tasks: o.tasks,
     work_notes: o.workNotes, parts_used: o.partsUsed || [], time_spent: o.timeSpent,
     outcome: o.outcome,
   }),
@@ -1604,10 +1605,11 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   const [partsUsed, setPartsUsed] = useState(service.partsUsed || []);
   const [addingPart, setAddingPart] = useState(false);
   const [timeSpent, setTimeSpent] = useState(service.timeSpent || "");
+  const [completedBy, setCompletedBy] = useState(service.completedBy || "");
 
   // Save handler for draft updates (doesn't complete)
   const saveDraft = () => {
-    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed, timeSpent } : sv));
+    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed, timeSpent, completedBy } : sv));
   };
 
   const addPart = (partId, qty) => {
@@ -1634,6 +1636,10 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   };
 
   const completeService = () => {
+    // Validate required fields
+    if (!completedBy.trim()) return alert("Enter who completed this service (required)");
+    if (!timeSpent.trim()) return alert("Enter time spent (required)");
+
     // Check stock first
     const shortages = [];
     partsUsed.forEach((pu) => {
@@ -1655,7 +1661,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
 
     // Mark service complete
     update("services", (prev) => prev.map((sv) => sv.id === service.id ? {
-      ...sv, completedDate: now(), workNotes: notes, partsUsed, timeSpent, outcome: "Completed",
+      ...sv, completedDate: now(), completedBy, workNotes: notes, partsUsed, timeSpent, outcome: "Completed",
     } : sv));
 
     // Update bike
@@ -1752,11 +1758,18 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
         )}
       </div>
 
-      {/* Time Spent */}
+      {/* Completed By & Time Spent */}
       {!isComplete && (
         <div style={s.card}>
-          <h2 style={s.h2}>Time Spent</h2>
-          <input style={s.input} value={timeSpent} onChange={(e) => setTimeSpent(e.target.value)} placeholder="e.g. 45 min, 1.5 hours" disabled={isComplete} />
+          <h2 style={s.h2}>Completion Details</h2>
+          <div style={s.grid(2)}>
+            <Field label="Completed By (required)">
+              <input style={s.input} value={completedBy} onChange={(e) => setCompletedBy(e.target.value)} placeholder="Your name (required)" />
+            </Field>
+            <Field label="Time Spent (required)">
+              <input style={s.input} value={timeSpent} onChange={(e) => setTimeSpent(e.target.value)} placeholder="e.g. 45 min, 1.5 hours" />
+            </Field>
+          </div>
         </div>
       )}
 
@@ -1773,6 +1786,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
       ) : (
         <div style={{ ...s.card, background: C.greenBg, borderColor: C.green + "33", marginTop: 12 }}>
           <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>✓ Service completed on {fmtDateTime(service.completedDate)}</div>
+          {service.completedBy && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Completed by: {service.completedBy}</div>}
           {service.timeSpent && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Time: {service.timeSpent}</div>}
         </div>
       )}
