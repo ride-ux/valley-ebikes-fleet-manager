@@ -1998,7 +1998,7 @@ function PartsPage({ parts, update, services, bikes }) {
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={s.table}>
-            <thead><tr>{["", "Part", "Category", "Supplier", "Code", "Qty", "Reorder", "Cost", "Used", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["", "Part", "Category", "Supplier", "Code", "Qty", "Reorder", "Cost", "Value", "Used", "Status", ""].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map((p, idx) => (
                 <tr key={p.id}
@@ -2016,6 +2016,7 @@ function PartsPage({ parts, update, services, bikes }) {
                   <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: p.qty <= p.reorder ? C.red : C.text }}>{p.qty}</td>
                   <td style={{ ...s.td, fontFamily: MONO, color: C.textMuted }}>{p.reorder}</td>
                   <td style={{ ...s.td, fontFamily: MONO, color: C.textMuted }}>${p.cost || 0}</td>
+                  <td style={{ ...s.td, fontFamily: MONO, fontWeight: 600, color: C.accent }}>${((p.cost || 0) * (p.qty || 0)).toFixed(2)}</td>
                   <td style={{ ...s.td, fontFamily: MONO, color: partUsage[p.id] ? C.accent : C.textMuted }}>
                     {partUsage[p.id] ? (
                       <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setViewingHistory(p.id)}>{partUsage[p.id]}</span>
@@ -2036,6 +2037,13 @@ function PartsPage({ parts, update, services, bikes }) {
                   </td>
                 </tr>
               ))}
+              <tr style={{ borderTop: `2px solid ${C.border}` }}>
+                <td colSpan={8} style={{ ...s.td, fontWeight: 700, textAlign: "right", fontSize: 14 }}>Total Inventory Value</td>
+                <td style={{ ...s.td, fontFamily: MONO, fontWeight: 800, fontSize: 16, color: C.accent }}>
+                  ${filtered.reduce((sum, p) => sum + (p.cost || 0) * (p.qty || 0), 0).toFixed(2)}
+                </td>
+                <td colSpan={3} style={s.td}></td>
+              </tr>
             </tbody>
           </table>
         </div>
