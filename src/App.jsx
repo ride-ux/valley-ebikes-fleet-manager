@@ -42,7 +42,7 @@ const fromDb = {
     id: r.id, bikeId: r.bike_id, serviceType: r.service_type, dueDate: r.due_date,
     completedDate: r.completed_date, completedBy: r.completed_by, assignedTo: r.assigned_to, tasks: r.tasks,
     workNotes: r.work_notes, partsUsed: r.parts_used || [], timeSpent: r.time_spent,
-    outcome: r.outcome, created: r.created_at,
+    odometer: r.odometer, outcome: r.outcome, created: r.created_at,
   }),
   parts: (r) => ({
     id: r.id, name: r.name, category: r.category, supplier: r.supplier,
@@ -81,7 +81,7 @@ const toDb = {
     completed_date: o.completedDate || null, completed_by: o.completedBy || null,
     assigned_to: o.assignedTo, tasks: o.tasks,
     work_notes: o.workNotes, parts_used: o.partsUsed || [], time_spent: o.timeSpent,
-    outcome: o.outcome,
+    odometer: o.odometer || null, outcome: o.outcome,
   }),
   parts: (o) => ({
     name: o.name, category: o.category, supplier: o.supplier, supplier_code: o.supplierCode,
@@ -1486,6 +1486,11 @@ function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, auto
         bikes={bikes}
         onResolve={(data) => {
           resolveFault(resolvingFault, data.resolution, "", data.resolvedBy, data.timeSpent);
+          // Update bike odometer
+          const fault = faults.find((f) => f.id === resolvingFault);
+          if (fault && data.odometer) {
+            update("bikes", (prev) => prev.map((b) => b.id === fault.bikeId ? { ...b, odometer: data.odometer } : b));
+          }
           setResolvingFault(null);
         }}
         onClose={() => setResolvingFault(null)}
@@ -1499,6 +1504,7 @@ function ResolveFaultModal({ fault, bikes, onResolve, onClose }) {
   const [timeSpent, setTimeSpent] = useState("");
   const [resolution, setResolution] = useState("");
   const bike = bikes.find((b) => b.id === fault?.bikeId);
+  const [odometer, setOdometer] = useState(bike?.odometer || "");
 
   return (
     <ModalShell title="Resolve Fault" onClose={onClose}>
@@ -1512,6 +1518,9 @@ function ResolveFaultModal({ fault, bikes, onResolve, onClose }) {
       <Field label="Completed By (required)">
         <input style={s.input} value={resolvedBy} onChange={(e) => setResolvedBy(e.target.value)} placeholder="Your name (required)" />
       </Field>
+      <Field label="Odometer km (required)">
+        <input style={{ ...s.input, fontFamily: MONO, fontSize: 16, fontWeight: 700 }} type="number" min="0" value={odometer} onChange={(e) => setOdometer(parseInt(e.target.value) || 0)} placeholder="Current reading" />
+      </Field>
       <Field label="Time Spent (required)">
         <input style={s.input} value={timeSpent} onChange={(e) => setTimeSpent(e.target.value)} placeholder="e.g. 20 min, 1 hour" />
       </Field>
@@ -1520,8 +1529,9 @@ function ResolveFaultModal({ fault, bikes, onResolve, onClose }) {
       </Field>
       <button style={s.btn("primary")} onClick={() => {
         if (!resolvedBy.trim()) return alert("Enter who completed this (required)");
+        if (!odometer && odometer !== 0) return alert("Enter odometer reading (required)");
         if (!timeSpent.trim()) return alert("Enter time spent (required)");
-        onResolve({ resolvedBy, timeSpent, resolution });
+        onResolve({ resolvedBy, timeSpent, resolution, odometer });
       }}>
         <Icon d={Icons.check} size={16} /> Resolve Fault
       </button>
@@ -1657,10 +1667,11 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   const [addingPart, setAddingPart] = useState(false);
   const [timeSpent, setTimeSpent] = useState(service.timeSpent || "");
   const [completedBy, setCompletedBy] = useState(service.completedBy || "");
+  const [odometer, setOdometer] = useState(service.odometer || bike?.odometer || "");
 
   // Save handler for draft updates (doesn't complete)
   const saveDraft = () => {
-    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed, timeSpent, completedBy } : sv));
+    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed, timeSpent, completedBy, odometer } : sv));
   };
 
   const addPart = (partId, qty) => {
@@ -1689,6 +1700,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   const completeService = () => {
     // Validate required fields
     if (!completedBy.trim()) return alert("Enter who completed this service (required)");
+    if (!odometer && odometer !== 0) return alert("Enter odometer reading (required)");
     if (!timeSpent.trim()) return alert("Enter time spent (required)");
 
     // Check stock first
@@ -1712,11 +1724,11 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
 
     // Mark service complete
     update("services", (prev) => prev.map((sv) => sv.id === service.id ? {
-      ...sv, completedDate: now(), completedBy, workNotes: notes, partsUsed, timeSpent, outcome: "Completed",
+      ...sv, completedDate: now(), completedBy, workNotes: notes, partsUsed, timeSpent, odometer, outcome: "Completed",
     } : sv));
 
     // Update bike
-    update("bikes", (prev) => prev.map((b) => b.id === service.bikeId ? { ...b, status: "Ready", lastService: now() } : b));
+    update("bikes", (prev) => prev.map((b) => b.id === service.bikeId ? { ...b, status: "Ready", lastService: now(), odometer: odometer || b.odometer } : b));
 
     onBack();
   };
@@ -1809,13 +1821,16 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
         )}
       </div>
 
-      {/* Completed By & Time Spent */}
+      {/* Completed By, Odometer & Time Spent */}
       {!isComplete && (
         <div style={s.card}>
           <h2 style={s.h2}>Completion Details</h2>
-          <div style={s.grid(2)}>
+          <div style={s.grid(3)}>
             <Field label="Completed By (required)">
               <input style={s.input} value={completedBy} onChange={(e) => setCompletedBy(e.target.value)} placeholder="Your name (required)" />
+            </Field>
+            <Field label="Odometer km (required)">
+              <input style={{ ...s.input, fontFamily: MONO, fontWeight: 700 }} type="number" min="0" value={odometer} onChange={(e) => setOdometer(parseInt(e.target.value) || 0)} placeholder="Current reading" />
             </Field>
             <Field label="Time Spent (required)">
               <input style={s.input} value={timeSpent} onChange={(e) => setTimeSpent(e.target.value)} placeholder="e.g. 45 min, 1.5 hours" />
@@ -1838,6 +1853,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
         <div style={{ ...s.card, background: C.greenBg, borderColor: C.green + "33", marginTop: 12 }}>
           <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>✓ Service completed on {fmtDateTime(service.completedDate)}</div>
           {service.completedBy && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Completed by: {service.completedBy}</div>}
+          {service.odometer && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Odometer: {service.odometer.toLocaleString()} km</div>}
           {service.timeSpent && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Time: {service.timeSpent}</div>}
         </div>
       )}
