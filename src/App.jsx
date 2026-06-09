@@ -1768,7 +1768,6 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="What was done on this job? Any findings, issues, observations..."
-          disabled={isComplete}
         />
       </div>
 
@@ -1776,11 +1775,9 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
       <div style={s.card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ ...s.h2, margin: 0 }}>Parts Used ({partsUsed.length})</h2>
-          {!isComplete && (
-            <button style={s.btn("secondary")} onClick={() => setAddingPart(true)}>
-              <Icon d={Icons.plus} size={14} /> Add Part
-            </button>
-          )}
+          <button style={s.btn("secondary")} onClick={() => setAddingPart(true)}>
+            <Icon d={Icons.plus} size={14} /> Add Part
+          </button>
         </div>
         {partsUsed.length === 0 ? (
           <div style={{ fontSize: 13, color: C.textMuted, padding: "8px 0" }}>No parts added yet</div>
@@ -1799,16 +1796,10 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 12, color: C.textMuted, marginRight: 6 }}>${((pu.cost || 0) * pu.qty).toFixed(2)}</span>
-                    {!isComplete ? (
-                      <>
-                        <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 13 }} onClick={() => updatePartQty(pu.partId, pu.qty - 1)}>−</button>
-                        <span style={{ fontFamily: MONO, fontWeight: 700, minWidth: 24, textAlign: "center" }}>{pu.qty}</span>
-                        <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 13 }} onClick={() => updatePartQty(pu.partId, pu.qty + 1)}>+</button>
-                        <button style={{ ...s.btn("ghost"), padding: "4px 8px", fontSize: 11, color: C.red }} onClick={() => removePart(pu.partId)}>✕</button>
-                      </>
-                    ) : (
-                      <span style={{ fontFamily: MONO, fontWeight: 700 }}>×{pu.qty}</span>
-                    )}
+                    <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 13 }} onClick={() => updatePartQty(pu.partId, pu.qty - 1)}>−</button>
+                    <span style={{ fontFamily: MONO, fontWeight: 700, minWidth: 24, textAlign: "center" }}>{pu.qty}</span>
+                    <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 13 }} onClick={() => updatePartQty(pu.partId, pu.qty + 1)}>+</button>
+                    <button style={{ ...s.btn("ghost"), padding: "4px 8px", fontSize: 11, color: C.red }} onClick={() => removePart(pu.partId)}>✕</button>
                   </div>
                 </div>
               );
@@ -1850,12 +1841,22 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
           </button>
         </div>
       ) : (
-        <div style={{ ...s.card, background: C.greenBg, borderColor: C.green + "33", marginTop: 12 }}>
-          <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>✓ Service completed on {fmtDateTime(service.completedDate)}</div>
-          {service.completedBy && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Completed by: {service.completedBy}</div>}
-          {service.odometer && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Odometer: {service.odometer.toLocaleString()} km</div>}
-          {service.timeSpent && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Time: {service.timeSpent}</div>}
-        </div>
+        <>
+          <div style={{ ...s.card, background: C.greenBg, borderColor: C.green + "33", marginTop: 12 }}>
+            <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>✓ Service completed on {fmtDateTime(service.completedDate)}</div>
+            {service.completedBy && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Completed by: {service.completedBy}</div>}
+            {service.odometer && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Odometer: {service.odometer.toLocaleString()} km</div>}
+            {service.timeSpent && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Time: {service.timeSpent}</div>}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <button style={s.btn("primary")} onClick={() => {
+              update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed } : sv));
+              alert("Service updated");
+            }}>
+              <Icon d={Icons.save} size={16} /> Update Service
+            </button>
+          </div>
+        </>
       )}
 
       {/* Add Part Modal */}
