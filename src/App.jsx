@@ -2403,6 +2403,7 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [reportType, setReportType] = useState("operational"); // operational, financial, fleet-health
+  const [drilldown, setDrilldown] = useState(null); // null, "faults", "services"
 
   // Compute date range
   const { startDate, endDate, label } = useMemo(() => {
@@ -2695,15 +2696,94 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
               <span style={s.statNum(C.red)}>{opMetrics.checksFailed}</span>
               <span style={s.statLabel}>Checks Failed</span>
             </div>
-            <div style={s.statCard(C.yellow, C.yellowBg)}>
+            <div style={{ ...s.statCard(C.yellow, C.yellowBg), cursor: "pointer", border: drilldown === "faults" ? `2px solid ${C.yellow}` : undefined }} onClick={() => setDrilldown(drilldown === "faults" ? null : "faults")}>
               <span style={s.statNum(C.yellow)}>{opMetrics.totalFaults}</span>
-              <span style={s.statLabel}>Faults Logged</span>
+              <span style={s.statLabel}>Faults Logged ▸</span>
             </div>
-            <div style={s.statCard(C.blue, C.blueBg)}>
+            <div style={{ ...s.statCard(C.blue, C.blueBg), cursor: "pointer", border: drilldown === "services" ? `2px solid ${C.blue}` : undefined }} onClick={() => setDrilldown(drilldown === "services" ? null : "services")}>
               <span style={s.statNum(C.blue)}>{opMetrics.servicesCompleted}</span>
-              <span style={s.statLabel}>Services Done</span>
+              <span style={s.statLabel}>Services Done ▸</span>
             </div>
           </div>
+
+          {/* Faults Drilldown */}
+          {drilldown === "faults" && (
+            <div style={s.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={{ ...s.h2, margin: 0 }}>Faults Logged — Detail</h2>
+                <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 12 }} onClick={() => setDrilldown(null)}>✕ Close</button>
+              </div>
+              {periodFaults.length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textMuted }}>No faults in this period.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={s.table}>
+                    <thead><tr>{["Date", "Bike #", "Bike", "Category", "Code", "Severity", "Description", "Status", "Resolved By", "Time", "Resolution"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {periodFaults.slice().reverse().map((f) => {
+                        const bike = bikes.find((b) => b.id === f.bikeId);
+                        return (
+                          <tr key={f.id}>
+                            <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{fmtDateTime(f.date)}</td>
+                            <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
+                            <td style={{ ...s.td, fontWeight: 600 }}>{bike?.name || "—"}</td>
+                            <td style={{ ...s.td, color: C.textMuted }}>{f.category}</td>
+                            <td style={{ ...s.td, fontFamily: MONO, fontSize: 12 }}>{f.code}</td>
+                            <td style={s.td}><span style={s.badge(f.severity === "Critical" ? C.red : f.severity === "Service Required" ? C.yellow : C.blue)}>{f.severity}</span></td>
+                            <td style={{ ...s.td, fontSize: 12, maxWidth: 200 }}>{f.description || "—"}</td>
+                            <td style={s.td}><span style={s.badge(f.status === "Open" ? C.red : f.status === "Resolved" || f.status === "Closed" ? C.green : C.yellow)}>{f.status}</span></td>
+                            <td style={{ ...s.td, fontSize: 12 }}>{f.resolvedBy || "—"}</td>
+                            <td style={{ ...s.td, fontSize: 12 }}>{f.timeSpent || "—"}</td>
+                            <td style={{ ...s.td, fontSize: 12, maxWidth: 200 }}>{f.resolution || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Services Drilldown */}
+          {drilldown === "services" && (
+            <div style={s.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={{ ...s.h2, margin: 0 }}>Services Done — Detail</h2>
+                <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 12 }} onClick={() => setDrilldown(null)}>✕ Close</button>
+              </div>
+              {periodServices.filter((sv) => sv.completedDate).length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textMuted }}>No completed services in this period.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={s.table}>
+                    <thead><tr>{["Date", "Bike #", "Bike", "Type", "Completed By", "Odometer", "Time", "Tasks / Notes", "Parts", "Cost"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {periodServices.filter((sv) => sv.completedDate).sort((a, b) => new Date(b.completedDate) - new Date(a.completedDate)).map((sv) => {
+                        const bike = bikes.find((b) => b.id === sv.bikeId);
+                        const partsCost = (sv.partsUsed || []).reduce((sum, pu) => sum + (pu.cost || 0) * pu.qty, 0);
+                        const partsStr = (sv.partsUsed || []).map((pu) => `${pu.name} ×${pu.qty}`).join(", ");
+                        return (
+                          <tr key={sv.id}>
+                            <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(sv.completedDate)}</td>
+                            <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
+                            <td style={{ ...s.td, fontWeight: 600 }}>{bike?.name || "—"}</td>
+                            <td style={{ ...s.td, color: C.textMuted }}>{sv.serviceType}</td>
+                            <td style={{ ...s.td, fontSize: 12 }}>{sv.completedBy || sv.assignedTo || "—"}</td>
+                            <td style={{ ...s.td, fontFamily: MONO, fontSize: 12 }}>{sv.odometer ? `${sv.odometer.toLocaleString()} km` : "—"}</td>
+                            <td style={{ ...s.td, fontSize: 12 }}>{sv.timeSpent || "—"}</td>
+                            <td style={{ ...s.td, fontSize: 12, maxWidth: 200 }}>{sv.workNotes || sv.tasks || "—"}</td>
+                            <td style={{ ...s.td, fontSize: 11, maxWidth: 180 }}>{partsStr || "—"}</td>
+                            <td style={{ ...s.td, fontFamily: MONO, fontSize: 12, color: C.accent, fontWeight: 600 }}>{partsCost > 0 ? `$${partsCost.toFixed(2)}` : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={s.card}>
             <h2 style={s.h2}>Faults by Category</h2>
