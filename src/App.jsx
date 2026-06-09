@@ -760,7 +760,7 @@ function DashboardPage({ stats, bikes, faults, parts, setPage, setSelectedBike }
             {bikes.filter((b) => b.status !== "Ready").map((b) => (
               <div key={b.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}11`, cursor: "pointer" }}
                 onClick={() => { setPage("bikes"); setSelectedBike(b.id); }}>
-                <span style={{ fontSize: 14, fontWeight: 500 }}>{b.name || b.id}</span>
+                <span style={{ fontSize: 14, fontWeight: 500 }}><span style={{ color: C.accent, fontFamily: MONO, fontWeight: 700 }}>#{b.bikeNumber || "?"}</span> — {b.name || b.id}</span>
                 <StatusBadge status={b.status} />
               </div>
             ))}
@@ -776,7 +776,7 @@ function DashboardPage({ stats, bikes, faults, parts, setPage, setSelectedBike }
         ) : (
           faults.slice(-5).reverse().map((f) => (
             <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", fontSize: 13 }}>
-              <span>{bikes.find((b) => b.id === f.bikeId)?.name || f.bikeId} — {f.category} {f.code}</span>
+              <span>{(() => { const bike = bikes.find((b) => b.id === f.bikeId); return bike ? <><span style={{ color: C.accent, fontFamily: MONO, fontWeight: 700 }}>#{bike.bikeNumber || "?"}</span> — {bike.name || f.bikeId}</> : f.bikeId; })()} — {f.category} {f.code}</span>
               <span style={s.badge(f.status === "Open" ? C.red : f.status === "In Progress" ? C.yellow : C.green)}>{f.status}</span>
             </div>
           ))
