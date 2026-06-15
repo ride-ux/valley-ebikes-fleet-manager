@@ -339,8 +339,8 @@ function PinScreen({ onUnlock }) {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
       <div style={{ textAlign: "center", marginBottom: 32 }}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>⚡</div>
-        <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Fleet Manager</div>
-        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Valley E-Bikes</div>
+        <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>FleetLok</div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Fleet Management System</div>
       </div>
       <div style={{
         ...s.card, maxWidth: 320, width: "100%", textAlign: "center",
@@ -597,7 +597,6 @@ function FleetManagerApp() {
     ["dashboard", "Dashboard", Icons.dashboard],
     ["bikes", "Fleet", Icons.bike],
     ["checks", "Checks", Icons.check],
-    ["faults", "Faults", Icons.fault],
     ["services", "Services", Icons.service],
     ["batteries", "Batteries", Icons.battery],
     ["parts", "Parts", Icons.parts],
@@ -610,7 +609,7 @@ function FleetManagerApp() {
       <div style={{ ...s.app, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
         <div style={{ textAlign: "center" }}>
-          <div style={{ ...s.logo, fontSize: 16, marginBottom: 8 }}>⚡ Fleet Manager</div>
+          <div style={{ ...s.logo, fontSize: 16, marginBottom: 8 }}>⚡ FleetLok</div>
           <div style={{ fontSize: 13, color: C.textMuted }}>Loading fleet data…</div>
         </div>
       </div>
@@ -629,8 +628,8 @@ function FleetManagerApp() {
       {/* HEADER */}
       <header style={s.header}>
         <div>
-          <div style={s.logo}>⚡ Fleet Manager</div>
-          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Valley E-Bikes</div>
+          <div style={s.logo}>⚡ FleetLok</div>
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Fleet Management</div>
         </div>
         <nav style={s.nav}>
           {pages.map(([key, label]) => (
@@ -645,8 +644,7 @@ function FleetManagerApp() {
       {page === "dashboard" && <DashboardPage stats={stats} bikes={bikes} faults={faults} parts={parts} setPage={setPage} setSelectedBike={setSelectedBike} />}
       {page === "bikes" && <BikesPage bikes={bikes} faults={faults} services={services} batteries={batteries} searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedBike={selectedBike} setSelectedBike={setSelectedBike} setModal={setModal} update={update} checks={checks} />}
       {page === "checks" && <ChecksPage checks={checks} bikes={bikes} staff={staff} setModal={setModal} update={update} />}
-      {page === "faults" && <FaultsPage faults={faults} bikes={bikes} staff={staff} setModal={setModal} resolveFault={resolveFault} update={update} autoCreateService={autoCreateService} />}
-      {page === "services" && <ServicesPage services={services} bikes={bikes} parts={parts} setModal={setModal} update={update} />}
+      {page === "services" && <ServicesPage services={services} faults={faults} bikes={bikes} staff={staff} parts={parts} setModal={setModal} update={update} resolveFault={resolveFault} autoCreateService={autoCreateService} />}
       {page === "batteries" && <BatteriesPage batteries={batteries} bikes={bikes} setModal={setModal} update={update} />}
       {page === "parts" && <PartsPage parts={parts} update={update} services={services} bikes={bikes} />}
       {page === "reports" && <ReportsPage bikes={bikes} checks={checks} faults={faults} services={services} batteries={batteries} parts={parts} />}
@@ -1395,110 +1393,6 @@ function UpKeepModal({ bike, existingTasks, staff, onSubmit, onClose }) {
   );
 }
 
-// ═══════════════════════════════════════════════
-// FAULTS PAGE
-// ═══════════════════════════════════════════════
-function FaultsPage({ faults, bikes, staff, setModal, resolveFault, update, autoCreateService }) {
-  const [filter, setFilter] = useState("open");
-  const [editingFault, setEditingFault] = useState(null);
-  const [resolvingFault, setResolvingFault] = useState(null);
-  const filtered = faults.filter((f) => {
-    if (filter === "open") return f.status === "Open" || f.status === "In Progress" || f.status === "Waiting Parts";
-    if (filter === "resolved") return f.status === "Resolved" || f.status === "Closed";
-    return true;
-  });
-
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={s.h1}>Faults ({faults.length})</h1>
-        <button style={s.btn("primary")} onClick={() => setModal("reportFault")}><Icon d={Icons.plus} size={16} /> Report Fault</button>
-      </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {[["open", "Open"], ["resolved", "Resolved"], ["all", "All"]].map(([k, l]) => (
-          <button key={k} style={s.navBtn(filter === k)} onClick={() => setFilter(k)}>{l}</button>
-        ))}
-      </div>
-      {filtered.length === 0 ? (
-        <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No faults in this view.</div>
-      ) : (
-        filtered.slice().reverse().map((f) => (
-          <div key={f.id} style={s.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                  {(() => { const bike = bikes.find((b) => b.id === f.bikeId); return bike ? `#${bike.bikeNumber || "?"} — ${bike.name || "Unnamed"}` : f.bikeId; })()}
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{f.code} — {f.category}</div>
-                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {fmtDateTime(f.date)} • {f.reportedBy}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <span style={s.badge(f.severity === "Critical" ? C.red : f.severity === "Service Required" ? C.yellow : C.blue)}>{f.severity}</span>
-                <span style={s.badge(f.status === "Open" ? C.red : f.status === "Resolved" || f.status === "Closed" ? C.green : C.yellow)}>{f.status}</span>
-              </div>
-            </div>
-            {f.description && <div style={{ marginTop: 8, fontSize: 13 }}>{f.description}</div>}
-            {f.resolution && (
-              <div style={{ marginTop: 6, fontSize: 12, color: C.green }}>
-                ✓ {f.resolution}
-                {f.resolvedBy && <span style={{ color: C.textMuted }}> • Resolved by: {f.resolvedBy}</span>}
-                {f.timeSpent && <span style={{ color: C.textMuted }}> • Time: {f.timeSpent}</span>}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => setEditingFault(f.id)}>✎ Edit</button>
-              {(f.status === "Open" || f.status === "In Progress") && (
-                <button style={{ ...s.btn("primary"), fontSize: 12 }} onClick={() => setResolvingFault(f.id)}>Resolve</button>
-              )}
-            </div>
-          </div>
-        ))
-      )}
-
-      {editingFault && <EditFaultModal
-        fault={faults.find((f) => f.id === editingFault)}
-        bikes={bikes}
-        staff={staff}
-        onSave={(data) => {
-          update("faults", (prev) => prev.map((f) => f.id === editingFault ? { ...f, ...data } : f));
-          if (data.severity === "Critical") {
-            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
-            autoCreateService(data.bikeId, `Critical fault: ${data.category} ${data.code} — ${data.description}`);
-          } else if (data.severity === "Service Required") {
-            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
-            autoCreateService(data.bikeId, `Fault: ${data.category} ${data.code} — ${data.description}`);
-          }
-          setEditingFault(null);
-        }}
-        onDelete={() => {
-          if (confirm("Delete this fault permanently?")) {
-            update("faults", (prev) => prev.filter((f) => f.id !== editingFault));
-            setEditingFault(null);
-          }
-        }}
-        onClose={() => setEditingFault(null)}
-      />}
-
-      {resolvingFault && <ResolveFaultModal
-        fault={faults.find((f) => f.id === resolvingFault)}
-        bikes={bikes}
-        onResolve={(data) => {
-          resolveFault(resolvingFault, data.resolution, "", data.resolvedBy, data.timeSpent);
-          // Update bike odometer
-          const fault = faults.find((f) => f.id === resolvingFault);
-          if (fault && data.odometer) {
-            update("bikes", (prev) => prev.map((b) => b.id === fault.bikeId ? { ...b, odometer: data.odometer } : b));
-          }
-          setResolvingFault(null);
-        }}
-        onClose={() => setResolvingFault(null)}
-      />}
-    </div>
-  );
-}
-
 function ResolveFaultModal({ fault, bikes, onResolve, onClose }) {
   const [resolvedBy, setResolvedBy] = useState("");
   const [timeSpent, setTimeSpent] = useState("");
@@ -1598,9 +1492,11 @@ function EditFaultModal({ fault, bikes, staff, onSave, onDelete, onClose }) {
 // ═══════════════════════════════════════════════
 // SERVICES PAGE
 // ═══════════════════════════════════════════════
-function ServicesPage({ services, bikes, parts, setModal, update }) {
+function ServicesPage({ services, faults, bikes, staff, parts, setModal, update, resolveFault, autoCreateService }) {
   const [selectedService, setSelectedService] = useState(null);
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState("pending"); // pending, complete, allServices, openFaults, resolvedFaults, allFaults
+  const [editingFault, setEditingFault] = useState(null);
+  const [resolvingFault, setResolvingFault] = useState(null);
 
   const service = selectedService ? services.find((sv) => sv.id === selectedService) : null;
 
@@ -1608,54 +1504,161 @@ function ServicesPage({ services, bikes, parts, setModal, update }) {
     return <ServiceWorkspace service={service} bikes={bikes} parts={parts} update={update} onBack={() => setSelectedService(null)} />;
   }
 
-  const filtered = services.filter((sv) => {
+  const isFaultView = filter === "openFaults" || filter === "resolvedFaults" || filter === "allFaults";
+
+  const filteredServices = services.filter((sv) => {
     if (filter === "pending") return !sv.completedDate;
     if (filter === "complete") return !!sv.completedDate;
     return true;
   });
 
+  const filteredFaults = faults.filter((f) => {
+    if (filter === "openFaults") return f.status === "Open" || f.status === "In Progress" || f.status === "Waiting Parts";
+    if (filter === "resolvedFaults") return f.status === "Resolved" || f.status === "Closed";
+    return true;
+  });
+
+  const openFaultCount = faults.filter((f) => f.status === "Open" || f.status === "In Progress" || f.status === "Waiting Parts").length;
+  const resolvedFaultCount = faults.filter((f) => f.status === "Resolved" || f.status === "Closed").length;
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={s.h1}>Services ({services.length})</h1>
-        <button style={s.btn("primary")} onClick={() => setModal("addService")}><Icon d={Icons.plus} size={16} /> New Service</button>
+        <h1 style={s.h1}>Services & Faults</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={s.btn("primary")} onClick={() => setModal("addService")}><Icon d={Icons.plus} size={16} /> New Service</button>
+          <button style={s.btn("danger")} onClick={() => setModal("reportFault")}><Icon d={Icons.fault} size={16} /> Report Fault</button>
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {[["pending", "Pending"], ["complete", "Complete"], ["all", "All"]].map(([k, l]) => (
-          <button key={k} style={s.navBtn(filter === k)} onClick={() => setFilter(k)}>{l}</button>
-        ))}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        <button style={s.navBtn(filter === "pending")} onClick={() => setFilter("pending")}>Pending ({services.filter((sv) => !sv.completedDate).length})</button>
+        <button style={s.navBtn(filter === "complete")} onClick={() => setFilter("complete")}>Complete</button>
+        <span style={{ width: 1, background: C.border, margin: "0 4px" }}></span>
+        <button style={s.navBtn(filter === "openFaults")} onClick={() => setFilter("openFaults")}>Open Faults ({openFaultCount})</button>
+        <button style={s.navBtn(filter === "resolvedFaults")} onClick={() => setFilter("resolvedFaults")}>Resolved Faults ({resolvedFaultCount})</button>
       </div>
-      {filtered.length === 0 ? (
-        <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No service records in this view.</div>
-      ) : (
-        filtered.slice().reverse().map((sv) => {
-          const partsCount = (sv.partsUsed || []).reduce((sum, p) => sum + (p.qty || 0), 0);
-          return (
-            <div key={sv.id} style={{ ...s.card, cursor: "pointer" }}
-              onClick={() => setSelectedService(sv.id)}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = C.accent + "55"}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = C.border}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  {(() => { const bike = bikes.find((b) => b.id === sv.bikeId); return (
-                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                      <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || sv.bikeId}
-                      {bike?.serial && <span style={{ color: C.textMuted, fontWeight: 400, fontSize: 12, marginLeft: 8 }}>Serial: {bike.serial}</span>}
+
+      {/* Services View */}
+      {!isFaultView && (
+        <>
+          {filteredServices.length === 0 ? (
+            <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No service records in this view.</div>
+          ) : (
+            filteredServices.slice().reverse().map((sv) => {
+              const partsCount = (sv.partsUsed || []).reduce((sum, p) => sum + (p.qty || 0), 0);
+              return (
+                <div key={sv.id} style={{ ...s.card, cursor: "pointer" }}
+                  onClick={() => setSelectedService(sv.id)}
+                  onMouseOver={(e) => e.currentTarget.style.borderColor = C.accent + "55"}
+                  onMouseOut={(e) => e.currentTarget.style.borderColor = C.border}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      {(() => { const bike = bikes.find((b) => b.id === sv.bikeId); return (
+                        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+                          <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || sv.bikeId}
+                          {bike?.serial && <span style={{ color: C.textMuted, fontWeight: 400, fontSize: 12, marginLeft: 8 }}>Serial: {bike.serial}</span>}
+                        </div>
+                      ); })()}
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{sv.serviceType}</div>
+                      <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
+                        {sv.assignedTo || "Unassigned"} • Due: {fmtDate(sv.dueDate)} {sv.completedDate ? `• Done: ${fmtDate(sv.completedDate)}` : ""}
+                        {partsCount > 0 && ` • ${partsCount} part${partsCount > 1 ? "s" : ""} used`}
+                      </div>
                     </div>
-                  ); })()}
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{sv.serviceType}</div>
-                  <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
-                    {sv.assignedTo || "Unassigned"} • Due: {fmtDate(sv.dueDate)} {sv.completedDate ? `• Done: ${fmtDate(sv.completedDate)}` : ""}
-                    {partsCount > 0 && ` • ${partsCount} part${partsCount > 1 ? "s" : ""} used`}
+                    <span style={s.badge(sv.completedDate ? C.green : C.yellow)}>{sv.completedDate ? "Complete" : "Pending"}</span>
+                  </div>
+                  {sv.tasks && <div style={{ marginTop: 6, fontSize: 13, color: C.textMuted }}>{sv.tasks}</div>}
+                </div>
+              );
+            })
+          )}
+        </>
+      )}
+
+      {/* Faults View */}
+      {isFaultView && (
+        <>
+          {filteredFaults.length === 0 ? (
+            <div style={{ ...s.card, textAlign: "center", color: C.textMuted }}>No faults in this view.</div>
+          ) : (
+            filteredFaults.slice().reverse().map((f) => (
+              <div key={f.id} style={s.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+                      {(() => { const bike = bikes.find((b) => b.id === f.bikeId); return bike ? `#${bike.bikeNumber || "?"} — ${bike.name || "Unnamed"}` : f.bikeId; })()}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{f.code} — {f.category}</div>
+                    <div style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {fmtDateTime(f.date)} • {f.reportedBy}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={s.badge(f.severity === "Critical" ? C.red : f.severity === "Service Required" ? C.yellow : C.blue)}>{f.severity}</span>
+                    <span style={s.badge(f.status === "Open" ? C.red : f.status === "Resolved" || f.status === "Closed" ? C.green : C.yellow)}>{f.status}</span>
                   </div>
                 </div>
-                <span style={s.badge(sv.completedDate ? C.green : C.yellow)}>{sv.completedDate ? "Complete" : "Pending"}</span>
+                {f.description && <div style={{ marginTop: 8, fontSize: 13 }}>{f.description}</div>}
+                {f.resolution && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: C.green }}>
+                    ✓ {f.resolution}
+                    {f.resolvedBy && <span style={{ color: C.textMuted }}> • Resolved by: {f.resolvedBy}</span>}
+                    {f.timeSpent && <span style={{ color: C.textMuted }}> • Time: {f.timeSpent}</span>}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button style={{ ...s.btn("ghost"), fontSize: 12 }} onClick={() => setEditingFault(f.id)}>✎ Edit</button>
+                  {(f.status === "Open" || f.status === "In Progress") && (
+                    <button style={{ ...s.btn("primary"), fontSize: 12 }} onClick={() => setResolvingFault(f.id)}>Resolve</button>
+                  )}
+                </div>
               </div>
-              {sv.tasks && <div style={{ marginTop: 6, fontSize: 13, color: C.textMuted }}>{sv.tasks}</div>}
-            </div>
-          );
-        })
+            ))
+          )}
+        </>
       )}
+
+      {/* Edit Fault Modal */}
+      {editingFault && <EditFaultModal
+        fault={faults.find((f) => f.id === editingFault)}
+        bikes={bikes}
+        staff={staff}
+        onSave={(data) => {
+          update("faults", (prev) => prev.map((f) => f.id === editingFault ? { ...f, ...data } : f));
+          if (data.severity === "Critical") {
+            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Out of Service" } : b));
+            autoCreateService(data.bikeId, `Critical fault: ${data.category} ${data.code} — ${data.description}`);
+          } else if (data.severity === "Service Required") {
+            update("bikes", (prev) => prev.map((b) => b.id === data.bikeId ? { ...b, status: "Service Due" } : b));
+            autoCreateService(data.bikeId, `Fault: ${data.category} ${data.code} — ${data.description}`);
+          }
+          setEditingFault(null);
+        }}
+        onDelete={() => {
+          if (confirm("Delete this fault permanently?")) {
+            update("faults", (prev) => prev.filter((f) => f.id !== editingFault));
+            setEditingFault(null);
+          }
+        }}
+        onClose={() => setEditingFault(null)}
+      />}
+
+      {/* Resolve Fault Modal */}
+      {resolvingFault && <ResolveFaultModal
+        fault={faults.find((f) => f.id === resolvingFault)}
+        bikes={bikes}
+        onResolve={(data) => {
+          resolveFault(resolvingFault, data.resolution, "", data.resolvedBy, data.timeSpent);
+          const fault = faults.find((f) => f.id === resolvingFault);
+          if (fault && data.odometer) {
+            update("bikes", (prev) => prev.map((b) => b.id === fault.bikeId ? { ...b, odometer: data.odometer } : b));
+          }
+          setResolvingFault(null);
+        }}
+        onClose={() => setResolvingFault(null)}
+      />}
     </div>
   );
 }
@@ -2547,7 +2550,7 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
 
   const exportOperational = () => {
     const rows = [
-      ["Valley E-Bikes — Operational Report"],
+      ["FleetLok — Operational Report"],
       ["Period", label],
       ["Generated", new Date().toLocaleString("en-AU")],
       [],
@@ -2576,12 +2579,12 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
         return [fmtDateTime(f.date), bike?.name || f.bikeId, f.category, f.code, f.severity, f.status, f.reportedBy, f.description];
       }),
     ];
-    downloadCSV(`valley-ebikes-operational-${new Date().toISOString().slice(0,10)}.csv`, rows);
+    downloadCSV(`fleetlok-operational-${new Date().toISOString().slice(0,10)}.csv`, rows);
   };
 
   const exportFinancial = () => {
     const rows = [
-      ["Valley E-Bikes — Financial Report"],
+      ["FleetLok — Financial Report"],
       ["Period", label],
       ["Generated", new Date().toLocaleString("en-AU")],
       [],
@@ -2605,12 +2608,12 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
       ["Part", "Category", "Supplier", "Supplier Code", "Qty", "Reorder At", "Cost", "Value"],
       ...parts.map((p) => [p.name, p.category, p.supplier, p.supplierCode, p.qty, p.reorder, `$${(p.cost || 0).toFixed(2)}`, `$${((p.cost || 0) * p.qty).toFixed(2)}`]),
     ];
-    downloadCSV(`valley-ebikes-financial-${new Date().toISOString().slice(0,10)}.csv`, rows);
+    downloadCSV(`fleetlok-financial-${new Date().toISOString().slice(0,10)}.csv`, rows);
   };
 
   const exportFleetHealth = () => {
     const rows = [
-      ["Valley E-Bikes — Fleet Health Report"],
+      ["FleetLok — Fleet Health Report"],
       ["Period", label],
       ["Generated", new Date().toLocaleString("en-AU")],
       [],
@@ -2635,7 +2638,7 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
       ["ID", "Name", "Category", "Status", "Condition", "Total Rides", "Last Service"],
       ...bikes.map((b) => [b.id, b.name, b.category, b.status, b.conditionScore, b.totalRides, b.lastService ? fmtDate(b.lastService) : ""]),
     ];
-    downloadCSV(`valley-ebikes-fleet-health-${new Date().toISOString().slice(0,10)}.csv`, rows);
+    downloadCSV(`fleetlok-fleet-health-${new Date().toISOString().slice(0,10)}.csv`, rows);
   };
 
   const exportAll = () => { exportOperational(); setTimeout(exportFinancial, 300); setTimeout(exportFleetHealth, 600); };
