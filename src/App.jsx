@@ -2729,8 +2729,11 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
     const batteryFaults = periodFaults.filter((f) => f.category === "Battery").length;
     const problemBatteries = batteries.filter((b) => b.status !== "Active").length;
 
-    return { problemBikes, recurring, categoryStats, batteryFaults, problemBatteries };
-  }, [periodFaults, bikes, batteries]);
+    // Completed services in period
+    const completedServices = periodServices.filter((sv) => sv.completedDate && inRange(sv.completedDate) && sv.outcome !== "Cancelled");
+
+    return { problemBikes, recurring, categoryStats, batteryFaults, problemBatteries, completedServices };
+  }, [periodFaults, periodServices, bikes, batteries]);
 
   // ─── CSV EXPORT ───
   const downloadCSV = (filename, rows) => {
@@ -3099,7 +3102,7 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
       {/* FLEET HEALTH */}
       {reportType === "fleet-health" && (
         <>
-          <div style={{ ...s.grid(4), marginBottom: 16 }}>
+          <div style={{ ...s.grid(5), marginBottom: 16 }}>
             <div style={s.statCard(C.red, C.redBg)}>
               <span style={s.statNum(C.red)}>{healthMetrics.recurring.length}</span>
               <span style={s.statLabel}>Recurring Bikes</span>
@@ -3115,6 +3118,10 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
             <div style={s.statCard(C.blue, C.blueBg)}>
               <span style={s.statNum(C.blue)}>{healthMetrics.problemBikes.length}</span>
               <span style={s.statLabel}>Bikes with Faults</span>
+            </div>
+            <div style={s.statCard(C.green, C.greenBg)}>
+              <span style={s.statNum(C.green)}>{healthMetrics.completedServices.length}</span>
+              <span style={s.statLabel}>Services Done</span>
             </div>
           </div>
 
@@ -3158,6 +3165,40 @@ function ReportsPage({ bikes, checks, faults, services, batteries, parts }) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={s.card}>
+            <h2 style={s.h2}>Services Completed ({healthMetrics.completedServices.length})</h2>
+            {healthMetrics.completedServices.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMuted }}>No completed services in this period.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={s.table}>
+                  <thead><tr>{["Date", "Bike #", "Bike", "Type", "Completed By", "Odometer", "Time", "Tasks / Notes", "Parts", "Cost"].map((h) => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {healthMetrics.completedServices.sort((a, b) => new Date(b.completedDate) - new Date(a.completedDate)).map((sv) => {
+                      const bike = bikes.find((b) => b.id === sv.bikeId);
+                      const partsCost = (sv.partsUsed || []).reduce((sum, pu) => sum + (pu.cost || 0) * pu.qty, 0);
+                      const partsStr = (sv.partsUsed || []).map((pu) => `${pu.name} ×${pu.qty}`).join(", ");
+                      return (
+                        <tr key={sv.id}>
+                          <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(sv.completedDate)}</td>
+                          <td style={{ ...s.td, fontFamily: MONO, fontWeight: 700, color: C.accent }}>#{bike?.bikeNumber || "?"}</td>
+                          <td style={{ ...s.td, fontWeight: 600 }}>{bike?.name || "—"}</td>
+                          <td style={{ ...s.td, color: C.textMuted }}>{sv.serviceType}</td>
+                          <td style={{ ...s.td, fontSize: 12 }}>{sv.completedBy || sv.assignedTo || "—"}</td>
+                          <td style={{ ...s.td, fontFamily: MONO, fontSize: 12 }}>{sv.odometer ? `${sv.odometer.toLocaleString()} km` : "—"}</td>
+                          <td style={{ ...s.td, fontSize: 12 }}>{sv.timeSpent || "—"}</td>
+                          <td style={{ ...s.td, fontSize: 12, maxWidth: 200 }}>{sv.workNotes || sv.tasks || "—"}</td>
+                          <td style={{ ...s.td, fontSize: 11, maxWidth: 180 }}>{partsStr || "—"}</td>
+                          <td style={{ ...s.td, fontFamily: MONO, fontSize: 12, color: C.accent, fontWeight: 600 }}>{partsCost > 0 ? `$${partsCost.toFixed(2)}` : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}
