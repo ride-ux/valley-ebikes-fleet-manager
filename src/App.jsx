@@ -42,7 +42,9 @@ const fromDb = {
     id: r.id, bikeId: r.bike_id, serviceType: r.service_type, dueDate: r.due_date,
     completedDate: r.completed_date, completedBy: r.completed_by, assignedTo: r.assigned_to, tasks: r.tasks,
     workNotes: r.work_notes, partsUsed: r.parts_used || [], timeSpent: r.time_spent,
-    odometer: r.odometer, outcome: r.outcome, created: r.created_at,
+    odometer: r.odometer, outcome: r.outcome,
+    cancelledDate: r.cancelled_date, cancelledBy: r.cancelled_by, cancelReason: r.cancel_reason,
+    created: r.created_at,
   }),
   parts: (r) => ({
     id: r.id, name: r.name, category: r.category, supplier: r.supplier,
@@ -82,6 +84,7 @@ const toDb = {
     assigned_to: o.assignedTo, tasks: o.tasks,
     work_notes: o.workNotes, parts_used: o.partsUsed || [], time_spent: o.timeSpent,
     odometer: o.odometer || null, outcome: o.outcome,
+    cancelled_date: o.cancelledDate || null, cancelled_by: o.cancelledBy || null, cancel_reason: o.cancelReason || null,
   }),
   parts: (o) => ({
     name: o.name, category: o.category, supplier: o.supplier, supplier_code: o.supplierCode,
@@ -1032,10 +1035,16 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
                         {sv.completedDate ? ` • Completed: ${fmtDate(sv.completedDate)}` : ""}
                       </div>
                     </div>
-                    <span style={s.badge(sv.completedDate ? C.green : C.yellow)}>{sv.completedDate ? "Complete" : "Pending"}</span>
+                    <span style={s.badge(sv.outcome === "Cancelled" ? C.red : sv.completedDate ? C.green : C.yellow)}>{sv.outcome === "Cancelled" ? "Cancelled" : sv.completedDate ? "Complete" : "Pending"}</span>
                   </div>
                   {sv.tasks && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{sv.tasks}</div>}
                   {sv.workNotes && <div style={{ fontSize: 12, marginTop: 4 }}>{sv.workNotes}</div>}
+                  {sv.outcome === "Cancelled" && (
+                    <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>
+                      Cancelled by: {sv.cancelledBy || "—"} • {fmtDateTime(sv.cancelledDate)}
+                      {sv.cancelReason && <div style={{ marginTop: 2 }}>Reason: {sv.cancelReason}</div>}
+                    </div>
+                  )}
                   {partsCount > 0 && (
                     <div style={{ fontSize: 12, color: C.accent, marginTop: 4 }}>
                       {partsCount} part{partsCount > 1 ? "s" : ""} used • ${partsCost.toFixed(2)}
@@ -1507,8 +1516,8 @@ function ServicesPage({ services, faults, bikes, staff, parts, setModal, update,
   const isFaultView = filter === "openFaults" || filter === "resolvedFaults" || filter === "allFaults";
 
   const filteredServices = services.filter((sv) => {
-    if (filter === "pending") return !sv.completedDate;
-    if (filter === "complete") return !!sv.completedDate;
+    if (filter === "pending") return !sv.completedDate && sv.outcome !== "Cancelled";
+    if (filter === "complete") return !!sv.completedDate || sv.outcome === "Cancelled";
     return true;
   });
 
@@ -1567,7 +1576,7 @@ function ServicesPage({ services, faults, bikes, staff, parts, setModal, update,
                         {partsCount > 0 && ` • ${partsCount} part${partsCount > 1 ? "s" : ""} used`}
                       </div>
                     </div>
-                    <span style={s.badge(sv.completedDate ? C.green : C.yellow)}>{sv.completedDate ? "Complete" : "Pending"}</span>
+                    <span style={s.badge(sv.outcome === "Cancelled" ? C.red : sv.completedDate ? C.green : C.yellow)}>{sv.outcome === "Cancelled" ? "Cancelled" : sv.completedDate ? "Complete" : "Pending"}</span>
                   </div>
                   {sv.tasks && <div style={{ marginTop: 6, fontSize: 13, color: C.textMuted }}>{sv.tasks}</div>}
                 </div>
@@ -1671,6 +1680,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   const [timeSpent, setTimeSpent] = useState(service.timeSpent || "");
   const [completedBy, setCompletedBy] = useState(service.completedBy || "");
   const [odometer, setOdometer] = useState(service.odometer || bike?.odometer || "");
+  const [showCancel, setShowCancel] = useState(false);
 
   // Save handler for draft updates (doesn't complete)
   const saveDraft = () => {
@@ -1738,6 +1748,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
 
   const totalCost = partsUsed.reduce((sum, pu) => sum + (pu.cost || 0) * pu.qty, 0);
   const isComplete = !!service.completedDate;
+  const isCancelled = service.outcome === "Cancelled";
 
   return (
     <div>
@@ -1834,13 +1845,22 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
       )}
 
       {/* Actions */}
-      {!isComplete ? (
+      {isCancelled ? (
+        <div style={{ ...s.card, background: C.redBg, borderColor: C.red + "33", marginTop: 12 }}>
+          <div style={{ fontSize: 13, color: C.red, fontWeight: 600 }}>✕ Service cancelled on {fmtDateTime(service.cancelledDate)}</div>
+          {service.cancelledBy && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Cancelled by: {service.cancelledBy}</div>}
+          {service.cancelReason && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Reason: {service.cancelReason}</div>}
+        </div>
+      ) : !isComplete ? (
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
           <button style={s.btn("primary")} onClick={completeService}>
             <Icon d={Icons.check} size={16} /> Mark Complete & Deduct Parts
           </button>
           <button style={s.btn("secondary")} onClick={() => { saveDraft(); alert("Progress saved"); }}>
             <Icon d={Icons.save} size={16} /> Save Progress
+          </button>
+          <button style={s.btn("danger")} onClick={() => setShowCancel(true)}>
+            <Icon d={Icons.x} size={16} /> Cancel Service
           </button>
         </div>
       ) : (
@@ -1862,9 +1882,57 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
         </>
       )}
 
+      {/* Cancel Service Modal */}
+      {showCancel && <CancelServiceModal
+        bike={bike}
+        service={service}
+        onCancel={(data) => {
+          update("services", (prev) => prev.map((sv) => sv.id === service.id ? {
+            ...sv, outcome: "Cancelled", cancelledDate: now(), cancelledBy: data.cancelledBy,
+            cancelReason: data.reason, workNotes: notes,
+          } : sv));
+          // Return bike to Ready if it was Service Due
+          update("bikes", (prev) => prev.map((b) => b.id === service.bikeId && b.status === "Service Due" ? { ...b, status: "Ready" } : b));
+          onBack();
+        }}
+        onClose={() => setShowCancel(false)}
+      />}
+
       {/* Add Part Modal */}
       {addingPart && <AddPartToServiceModal parts={parts} onAdd={addPart} onClose={() => setAddingPart(false)} />}
     </div>
+  );
+}
+
+function CancelServiceModal({ bike, service, onCancel, onClose }) {
+  const [cancelledBy, setCancelledBy] = useState("");
+  const [reason, setReason] = useState("");
+
+  return (
+    <ModalShell title="Cancel Service" onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>
+          <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || "Unnamed"}
+        </div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{service.serviceType}</div>
+      </div>
+      <div style={{ background: C.redBg, border: `1px solid ${C.red}33`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13, color: C.red }}>
+        This will cancel the service and record the reason in the bike's service history. This cannot be undone.
+      </div>
+      <Field label="Your Name (required)">
+        <input style={s.input} value={cancelledBy} onChange={(e) => setCancelledBy(e.target.value)} placeholder="Your name (required)" />
+      </Field>
+      <Field label="Reason for Cancellation (required)">
+        <textarea style={{ ...s.input, minHeight: 80 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this service being cancelled?" />
+      </Field>
+      <button style={s.btn("danger")} onClick={() => {
+        if (!cancelledBy.trim()) return alert("Enter your name (required)");
+        if (!reason.trim()) return alert("Enter a reason for cancellation (required)");
+        onCancel({ cancelledBy, reason });
+      }}>
+        <Icon d={Icons.x} size={16} /> Confirm Cancellation
+      </button>
+    </ModalShell>
   );
 }
 
