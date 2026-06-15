@@ -892,6 +892,7 @@ function useDragReorder(items, key, update) {
 function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTerm, selectedBike, setSelectedBike, setModal, update, checks }) {
   const [sortCol, setSortCol] = useState(null); // null = drag order, or column key
   const [sortDir, setSortDir] = useState("asc");
+  const [viewingHistory, setViewingHistory] = useState(null); // bikeId
 
   const toggleSort = (col) => {
     if (sortCol === col) {
@@ -1090,6 +1091,7 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
                 <SortHeader col="status" label="Status" />
                 <SortHeader col="lastCheck" label="Last Check" />
                 <SortHeader col="faults" label="Faults" />
+                <th style={s.th}></th>
               </tr>
             </thead>
             <tbody>
@@ -1116,13 +1118,135 @@ function BikesPage({ bikes, faults, services, batteries, searchTerm, setSearchTe
                       </span>
                     )}
                   </td>
+                  <td style={s.td}>
+                    <button style={{ ...s.btn("ghost"), padding: "4px 10px", fontSize: 11 }} onClick={(e) => { e.stopPropagation(); setViewingHistory(b.id); }}>History</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {viewingHistory && <BikeHistoryModal
+        bike={bikes.find((b) => b.id === viewingHistory)}
+        services={services.filter((sv) => sv.bikeId === viewingHistory)}
+        faults={faults.filter((f) => f.bikeId === viewingHistory)}
+        onClose={() => setViewingHistory(null)}
+      />}
     </div>
+  );
+}
+
+function BikeHistoryModal({ bike, services, faults, onClose }) {
+  const [tab, setTab] = useState("all"); // all, services, faults
+
+  const allItems = [
+    ...services.map((sv) => ({ ...sv, itemType: "service", sortDate: sv.completedDate || sv.cancelledDate || sv.created })),
+    ...faults.map((f) => ({ ...f, itemType: "fault", sortDate: f.date })),
+  ].sort((a, b) => new Date(b.sortDate) - new Date(a.sortDate));
+
+  const filtered = allItems.filter((item) => {
+    if (tab === "services") return item.itemType === "service";
+    if (tab === "faults") return item.itemType === "fault";
+    return true;
+  });
+
+  return (
+    <ModalShell title="Service & Fault History" onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>
+          <span style={{ color: C.accent, fontFamily: MONO }}>#{bike?.bikeNumber || "?"}</span> — {bike?.name || "Unnamed"}
+        </div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+          {bike?.category}{bike?.serial ? ` • Serial: ${bike.serial}` : ""} • Odometer: {bike?.odometer ? `${bike.odometer.toLocaleString()} km` : "—"}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+        <div style={s.statCard(C.blue, C.blueBg)}>
+          <span style={{ ...s.statNum(C.blue), fontSize: 20 }}>{services.length}</span>
+          <span style={s.statLabel}>Services</span>
+        </div>
+        <div style={s.statCard(C.yellow, C.yellowBg)}>
+          <span style={{ ...s.statNum(C.yellow), fontSize: 20 }}>{faults.length}</span>
+          <span style={s.statLabel}>Faults</span>
+        </div>
+        <div style={s.statCard(C.green, C.greenBg)}>
+          <span style={{ ...s.statNum(C.green), fontSize: 20 }}>{faults.filter((f) => f.status === "Resolved" || f.status === "Closed").length}</span>
+          <span style={s.statLabel}>Resolved</span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {[["all", `All (${allItems.length})`], ["services", `Services (${services.length})`], ["faults", `Faults (${faults.length})`]].map(([k, l]) => (
+          <button key={k} style={s.navBtn(tab === k)} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ maxHeight: 450, overflowY: "auto" }}>
+        {filtered.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: 20 }}>No records found.</div>
+        ) : (
+          filtered.map((item, i) => (
+            <div key={i} style={{ padding: "12px 0", borderBottom: `1px solid ${C.border}22` }}>
+              {item.itemType === "service" ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <span style={s.badge(C.blue)}>Service</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, marginLeft: 8 }}>{item.serviceType}</span>
+                    </div>
+                    <span style={s.badge(item.outcome === "Cancelled" ? C.red : item.completedDate ? C.green : C.yellow)}>
+                      {item.outcome === "Cancelled" ? "Cancelled" : item.completedDate ? "Complete" : "Pending"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                    {item.completedDate ? `Completed: ${fmtDate(item.completedDate)}` : item.cancelledDate ? `Cancelled: ${fmtDate(item.cancelledDate)}` : `Due: ${fmtDate(item.dueDate)}`}
+                    {item.completedBy && ` • By: ${item.completedBy}`}
+                    {item.cancelledBy && ` • By: ${item.cancelledBy}`}
+                    {item.timeSpent && ` • Time: ${item.timeSpent}`}
+                    {item.odometer && ` • Odo: ${item.odometer.toLocaleString()} km`}
+                  </div>
+                  {item.tasks && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{item.tasks}</div>}
+                  {item.workNotes && <div style={{ fontSize: 12, marginTop: 4 }}>{item.workNotes}</div>}
+                  {item.cancelReason && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>Reason: {item.cancelReason}</div>}
+                  {(item.partsUsed || []).length > 0 && (
+                    <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>
+                      Parts: {item.partsUsed.map((pu) => `${pu.name} ×${pu.qty}`).join(", ")}
+                      {" • $" + item.partsUsed.reduce((sum, pu) => sum + (pu.cost || 0) * pu.qty, 0).toFixed(2)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <span style={s.badge(item.severity === "Critical" ? C.red : item.severity === "Service Required" ? C.yellow : C.blue)}>Fault</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, marginLeft: 8 }}>{item.code} — {item.category}</span>
+                    </div>
+                    <span style={s.badge(item.status === "Open" ? C.red : item.status === "Resolved" || item.status === "Closed" ? C.green : C.yellow)}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                    {fmtDateTime(item.date)} • Reported by: {item.reportedBy} • {item.severity}
+                  </div>
+                  {item.description && <div style={{ fontSize: 12, marginTop: 4 }}>{item.description}</div>}
+                  {item.resolution && (
+                    <div style={{ fontSize: 12, color: C.green, marginTop: 4 }}>
+                      ✓ {item.resolution}
+                      {item.resolvedBy && ` • By: ${item.resolvedBy}`}
+                      {item.timeSpent && ` • Time: ${item.timeSpent}`}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </ModalShell>
   );
 }
 
