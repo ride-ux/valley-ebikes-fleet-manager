@@ -1675,6 +1675,7 @@ function ServicesPage({ services, faults, bikes, staff, parts, setModal, update,
 function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
   const bike = bikes.find((b) => b.id === service.bikeId);
   const [notes, setNotes] = useState(service.workNotes || "");
+  const [tasks, setTasks] = useState(service.tasks || "");
   const [partsUsed, setPartsUsed] = useState(service.partsUsed || []);
   const [addingPart, setAddingPart] = useState(false);
   const [timeSpent, setTimeSpent] = useState(service.timeSpent || "");
@@ -1684,7 +1685,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
 
   // Save handler for draft updates (doesn't complete)
   const saveDraft = () => {
-    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, workNotes: notes, partsUsed, timeSpent, completedBy, odometer } : sv));
+    update("services", (prev) => prev.map((sv) => sv.id === service.id ? { ...sv, tasks, workNotes: notes, partsUsed, timeSpent, completedBy, odometer } : sv));
   };
 
   const addPart = (partId, qty) => {
@@ -1737,7 +1738,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
 
     // Mark service complete
     update("services", (prev) => prev.map((sv) => sv.id === service.id ? {
-      ...sv, completedDate: now(), completedBy, workNotes: notes, partsUsed, timeSpent, odometer, outcome: "Completed",
+      ...sv, completedDate: now(), completedBy, workNotes: notes, partsUsed, timeSpent, odometer, tasks, outcome: "Completed",
     } : sv));
 
     // Update bike
@@ -1770,7 +1771,13 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
           <div><span style={s.label}>Assigned To</span><div style={{ fontSize: 13 }}>{service.assignedTo || "—"}</div></div>
           <div><span style={s.label}>Due Date</span><div style={{ fontSize: 13 }}>{fmtDate(service.dueDate)}</div></div>
           {isComplete && <div><span style={s.label}>Completed</span><div style={{ fontSize: 13 }}>{fmtDate(service.completedDate)}</div></div>}
-          {service.tasks && <div style={{ gridColumn: "1 / -1" }}><span style={s.label}>Scheduled Tasks</span><div style={{ fontSize: 13 }}>{service.tasks}</div></div>}
+          {service.tasks && <div style={{ gridColumn: "1 / -1" }}><span style={s.label}>Scheduled Tasks</span>
+            {isComplete || isCancelled ? (
+              <div style={{ fontSize: 13 }}>{tasks}</div>
+            ) : (
+              <textarea style={{ ...s.input, minHeight: 60, marginTop: 4 }} value={tasks} onChange={(e) => setTasks(e.target.value)} placeholder="Tasks to be performed..." />
+            )}
+          </div>}
         </div>
       </div>
 
@@ -1889,7 +1896,7 @@ function ServiceWorkspace({ service, bikes, parts, update, onBack }) {
         onCancel={(data) => {
           update("services", (prev) => prev.map((sv) => sv.id === service.id ? {
             ...sv, outcome: "Cancelled", cancelledDate: now(), cancelledBy: data.cancelledBy,
-            cancelReason: data.reason, workNotes: notes,
+            cancelReason: data.reason, workNotes: notes, tasks,
           } : sv));
           // Return bike to Ready if it was Service Due
           update("bikes", (prev) => prev.map((b) => b.id === service.bikeId && b.status === "Service Due" ? { ...b, status: "Ready" } : b));
